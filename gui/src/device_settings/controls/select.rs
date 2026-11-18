@@ -8,7 +8,7 @@ use cosmic::{
 use openscq30_lib::settings::Select;
 
 use crate::{
-    device_settings::labeled_setting_row,
+    device_settings::{ios_hero, labeled_setting_row},
     fl,
     theme::{SPACE_MD, SPACE_SM, SPACE_XS},
 };
@@ -23,6 +23,14 @@ pub fn select<'a, M>(
 where
     M: Clone + 'static,
 {
+    if (2..=4).contains(&setting.options.len()) {
+        return labeled_setting_row(
+            name,
+            ios_hero::ios_segmented_control(None, setting, value, false, on_change),
+            is_narrow,
+        );
+    }
+
     let selected_index = setting.options.iter().position(|option| option == value);
     let options = setting.options.to_owned();
     labeled_setting_row(

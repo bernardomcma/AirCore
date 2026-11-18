@@ -1,5 +1,6 @@
 mod controls;
 pub mod eq_helpers;
+pub mod ios_hero;
 mod legacy_migration;
 mod quick_presets;
 
@@ -406,6 +407,7 @@ enum CustomCategory {
 
 enum SettingBlock<'a, Message> {
     Row(Element<'a, Message>),
+    Standalone(Element<'a, Message>),
     GroupedSection {
         title: Cow<'a, str>,
         rows: Vec<Element<'a, Message>>,
@@ -754,31 +756,89 @@ impl DeviceSettingsModel {
         .into()
     }
 
+    fn category_badge_visual(&self, entity: nav_bar::Id) -> (cosmic::iced::Color, &'static str) {
+        use cosmic::iced::Color;
+        if let Some(cat) = self.nav_model.data::<CategoryId>(entity) {
+            match cat {
+                CategoryId::SoundModes => {
+                    (Color::from_rgb8(255, 45, 85), "audio-speakers-symbolic")
+                }
+                CategoryId::Equalizer | CategoryId::EqualizerImportExport => (
+                    Color::from_rgb8(0, 122, 255),
+                    "multimedia-equalizer-symbolic",
+                ),
+                CategoryId::HearingAssistance => (
+                    Color::from_rgb8(50, 173, 230),
+                    "preferences-desktop-accessibility-symbolic",
+                ),
+                CategoryId::ButtonConfiguration => {
+                    (Color::from_rgb8(142, 142, 147), "input-touchpad-symbolic")
+                }
+                CategoryId::General => {
+                    (Color::from_rgb8(88, 86, 214), "preferences-system-symbolic")
+                }
+                CategoryId::DeviceInformation => {
+                    (Color::from_rgb8(52, 199, 89), "dialog-information-symbolic")
+                }
+                _ => (
+                    Color::from_rgb8(142, 142, 147),
+                    "preferences-other-symbolic",
+                ),
+            }
+        } else {
+            (Color::from_rgb8(255, 149, 0), "starred-symbolic")
+        }
+    }
+
     fn view_sidebar(&self) -> Element<'_, Message> {
         let active_entity = self.nav_model.active();
-        let device_header = widget::column![
-            theme::row_title(self.device.model().translate()).wrapping(Wrapping::Word),
-            theme::mono_value(self.device.model().to_string()),
+        let device_header = widget::row![
+            widget::icon(crate::icons::openscq30()).size(28),
+            widget::column![
+                theme::row_title(self.device.model().translate()).wrapping(Wrapping::Word),
+                theme::muted_caption(self.device.model().to_string()),
+            ]
+            .spacing(2)
+            .width(Length::Fill),
         ]
-        .spacing(2)
+        .spacing(SPACE_SM)
+        .align_y(alignment::Vertical::Center)
         .padding([SPACE_XS, SPACE_SM]);
 
         let nav_buttons = widget::column(self.nav_model.iter().map(|entity| {
             let label = self.nav_model.text(entity).unwrap_or_default().to_string();
             let is_active = entity == active_entity;
+            let (sq_color, icon_name) = self.category_badge_visual(entity);
+
+            let squircle = widget::container(widget::icon::from_name(icon_name).size(14))
+                .width(Length::Fixed(26.0))
+                .height(Length::Fixed(26.0))
+                .align_x(alignment::Horizontal::Center)
+                .align_y(alignment::Vertical::Center)
+                .class(cosmic::theme::Container::custom(
+                    theme::category_squircle_container(sq_color),
+                ));
+
             widget::button::custom(
-                widget::text::body(label.clone())
-                    .wrapping(Wrapping::Word)
-                    .width(Length::Fill),
+                widget::row![
+                    squircle,
+                    widget::text::body(label.clone())
+                        .wrapping(Wrapping::Word)
+                        .width(Length::Fill),
+                    theme::muted_caption("›"),
+                ]
+                .spacing(SPACE_SM)
+                .align_y(alignment::Vertical::Center)
+                .width(Length::Fill),
             )
             .name(label)
             .class(theme::nav_pill_button(is_active))
-            .padding([SPACE_SM, SPACE_MD])
+            .padding([SPACE_SM, SPACE_SM])
             .width(Length::Fill)
             .on_press(Message::SelectCategory(entity))
             .into()
         }))
-        .spacing(SPACE_XS)
+        .spacing(4)
         .width(Length::Fill);
 
         widget::column![
@@ -789,10 +849,10 @@ impl DeviceSettingsModel {
         ]
         .spacing(SPACE_SM)
         .padding(SPACE_MD)
-        .width(220)
+        .width(244)
         .height(Length::Fill)
         .apply(widget::container)
-        .class(cosmic::theme::Container::custom(theme::sidebar_container))
+        .class(cosmic::theme::Container::custom(theme::card_container))
         .height(Length::Fill)
         .into()
     }
@@ -829,8 +889,25 @@ impl DeviceSettingsModel {
         category_id: &'a CategoryId,
         is_narrow: bool,
     ) -> Element<'a, Message> {
-        let header = components::page_header(category_id.translate(), None, None);
-        let mut sections: Vec<Element<'a, Message>> = vec![header];
+        let is_first_category = self
+            .nav_model
+            .iter()
+            .next()
+            .is_some_and(|first| first == self.nav_model.active());
+
+        let mut sections: Vec<Element<'a, Message>> = Vec::new();
+        if is_first_category
+            || matches!(
+                category_id,
+                CategoryId::SoundModes | CategoryId::General | CategoryId::DeviceInformation
+            )
+        {
+            sections.push(ios_hero::view_device_hero(&self.device));
+        }
+        if !is_first_category {
+            sections.push(components::page_header(category_id.translate(), None, None));
+        }
+
         let mut pending_rows: Vec<Element<'a, Message>> = Vec::new();
 
         let flush_pending = |pending: &mut Vec<Element<'a, Message>>,
@@ -848,6 +925,10 @@ impl DeviceSettingsModel {
             };
             match self.view_setting(setting_ui_state, is_narrow) {
                 SettingBlock::Row(element) => pending_rows.push(element),
+                SettingBlock::Standalone(element) => {
+                    flush_pending(&mut pending_rows, &mut sections);
+                    sections.push(element);
+                }
                 SettingBlock::GroupedSection { title, rows } => {
                     if !rows.is_empty() {
                         flush_pending(&mut pending_rows, &mut sections);
@@ -1125,7 +1206,7 @@ impl DeviceSettingsModel {
                 )
             })
             .flat_map(|s| match self.view_setting(s, is_narrow) {
-                SettingBlock::Row(el) => vec![el],
+                SettingBlock::Row(el) | SettingBlock::Standalone(el) => vec![el],
                 SettingBlock::GroupedSection { rows, .. } => rows,
             })
             .collect();
@@ -1204,15 +1285,30 @@ impl DeviceSettingsModel {
                 ))
             }
             SettingVariantUiState::Select { setting, value } => {
-                SettingBlock::Row(controls::select(
-                    translated_name,
-                    setting,
-                    value,
-                    move |value| {
-                        Message::SetSetting(setting_id, Cow::from(value.to_owned()).into())
-                    },
-                    is_narrow,
-                ))
+                if matches!(
+                    setting_id,
+                    SettingId::ListeningMode | SettingId::AmbientSoundMode
+                ) {
+                    SettingBlock::Standalone(ios_hero::ios_segmented_control(
+                        Some(translated_name),
+                        setting,
+                        value,
+                        true,
+                        move |value| {
+                            Message::SetSetting(setting_id, Cow::from(value.to_owned()).into())
+                        },
+                    ))
+                } else {
+                    SettingBlock::Row(controls::select(
+                        translated_name,
+                        setting,
+                        value,
+                        move |value| {
+                            Message::SetSetting(setting_id, Cow::from(value.to_owned()).into())
+                        },
+                        is_narrow,
+                    ))
+                }
             }
             SettingVariantUiState::OptionalSelect { setting, value }
             | SettingVariantUiState::PresetEqualizerProfileSelect {

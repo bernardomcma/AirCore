@@ -22,15 +22,22 @@ use windows::{
             },
         },
         Foundation::{
-            DEVPROPKEY, ERROR_ACCESS_DENIED, ERROR_FILE_NOT_FOUND, ERROR_PIPE_BUSY, HANDLE,
+            CloseHandle, DEVPROPKEY, ERROR_ACCESS_DENIED, ERROR_FILE_NOT_FOUND, ERROR_PIPE_BUSY,
+            HANDLE,
         },
         System::{
             Pipes::GetNamedPipeServerProcessId,
+            Registry::{HKEY_LOCAL_MACHINE, RRF_RT_REG_DWORD, RegGetValueW},
             Services::{
                 CloseServiceHandle, OpenSCManagerW, OpenServiceW, QueryServiceStatusEx, SC_HANDLE,
                 SC_MANAGER_CONNECT, SC_STATUS_PROCESS_INFO, SERVICE_QUERY_STATUS, SERVICE_RUNNING,
                 SERVICE_STATUS_PROCESS,
             },
+            Threading::{INFINITE, WaitForSingleObject},
+        },
+        UI::{
+            Shell::{SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW, ShellExecuteExW},
+            WindowsAndMessaging::{SW_HIDE, SW_SHOWNORMAL},
         },
     },
     core::{PCWSTR, w},
@@ -158,28 +165,106 @@ async fn nudge_wpods_service_retry() -> io::Result<()> {
     msg_pipe.write_message(&[0x21]).await
 }
 
-async fn ensure_wpods_service_ready() -> connection::Result<()> {
+fn wpods_waits_for_restart() -> bool {
+    let mut val = 0_u32;
+    let mut size = size_of::<u32>() as u32;
+    let status = unsafe {
+        RegGetValueW(
+            HKEY_LOCAL_MACHINE,
+            w!("SOFTWARE\\WPods\\Service"),
+            w!("WaitForRestart"),
+            RRF_RT_REG_DWORD,
+            None,
+            Some((&raw mut val).cast()),
+            Some(&mut size),
+        )
+    };
+    status.is_ok() && val != 0
+}
+
+fn run_elevated_and_wait(file: &str, params: &str, show_window: bool) -> io::Result<()> {
+    let wide_file: Vec<u16> = file.encode_utf16().chain(std::iter::once(0)).collect();
+    let wide_params: Vec<u16> = params.encode_utf16().chain(std::iter::once(0)).collect();
+
+    let mut sei = SHELLEXECUTEINFOW {
+        cbSize: size_of::<SHELLEXECUTEINFOW>() as u32,
+        fMask: SEE_MASK_NOCLOSEPROCESS,
+        lpVerb: w!("runas"),
+        lpFile: PCWSTR(wide_file.as_ptr()),
+        lpParameters: PCWSTR(wide_params.as_ptr()),
+        nShow: if show_window {
+            SW_SHOWNORMAL.0
+        } else {
+            SW_HIDE.0
+        },
+        ..Default::default()
+    };
+
+    unsafe { ShellExecuteExW(&mut sei) }.map_err(|err| io::Error::other(err.to_string()))?;
+
+    if !sei.hProcess.is_invalid() {
+        unsafe {
+            let _ = WaitForSingleObject(sei.hProcess, INFINITE);
+            let _ = CloseHandle(sei.hProcess);
+        }
+    }
+    Ok(())
+}
+
+fn ensure_cached_wpods_installer() -> io::Result<std::path::PathBuf> {
     use std::os::windows::process::CommandExt;
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
+    let dest = std::env::temp_dir().join("WPods-Setup.exe");
+    let script = format!(
+        "$ErrorActionPreference = 'Stop'; \
+         $dest = Join-Path $env:TEMP 'WPods-Setup.exe'; \
+         $expected = '{WPODS_SETUP_SHA256}'; \
+         if (-not (Test-Path $dest) -or ((Get-FileHash $dest -Algorithm SHA256).Hash -ne $expected)) {{ \
+             Invoke-WebRequest -Uri '{WPODS_SETUP_URL}' -OutFile $dest -UseBasicParsing; \
+         }}; \
+         if ((Get-FileHash $dest -Algorithm SHA256).Hash -ne $expected) {{ throw 'SHA256 mismatch' }}"
+    );
+    let status = std::process::Command::new("powershell.exe")
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-WindowStyle",
+            "Hidden",
+            "-Command",
+            &script,
+        ])
+        .creation_flags(CREATE_NO_WINDOW)
+        .status()?;
+
+    if !status.success() || !dest.exists() {
+        return Err(io::Error::other(
+            "failed to download or verify official WPods-Setup.exe",
+        ));
+    }
+    Ok(dest)
+}
+
+async fn ensure_wpods_service_ready() -> connection::Result<()> {
     let registered = tokio::task::spawn_blocking(is_wpods_service_registered)
         .await
         .unwrap_or(false);
 
     if registered {
-        debug!("WPodsService is installed but not running; requesting service start");
-        let _ = tokio::task::spawn_blocking(move || {
-            std::process::Command::new("powershell.exe")
-                .args([
-                    "-NoProfile",
-                    "-NonInteractive",
-                    "-WindowStyle",
-                    "Hidden",
-                    "-Command",
-                    "Start-Process sc.exe -ArgumentList 'start','WPodsService' -Verb RunAs -WindowStyle Hidden -Wait",
-                ])
-                .creation_flags(CREATE_NO_WINDOW)
-                .status()
+        if tokio::task::spawn_blocking(wpods_waits_for_restart)
+            .await
+            .unwrap_or(false)
+        {
+            return Err(connection::Error::ServiceUnavailable {
+                reason: "O driver Bluetooth dos AirPods (usbip-win2) já está instalado e aguarda 1 reinicialização do Windows para ativar o canal dos AirPods Pro 2. Reinicie o PC e clique em Connect!".to_owned(),
+                source: None,
+                location: Location::caller(),
+            });
+        }
+
+        debug!("WPodsService is installed but not running; starting via ShellExecuteExW");
+        let _ = tokio::task::spawn_blocking(|| {
+            run_elevated_and_wait("sc.exe", "start WPodsService", false)
         })
         .await;
 
@@ -190,40 +275,57 @@ async fn ensure_wpods_service_ready() -> connection::Result<()> {
             tokio::time::sleep(Duration::from_millis(500)).await;
         }
     } else {
-        debug!("WPodsService is not installed; downloading/launching official WPods-Setup.exe");
-        let script = format!(
-            "$ErrorActionPreference = 'Stop'; \
-             $dest = Join-Path $env:TEMP 'WPods-Setup.exe'; \
-             $expected = '{WPODS_SETUP_SHA256}'; \
-             if (-not (Test-Path $dest) -or ((Get-FileHash $dest -Algorithm SHA256).Hash -ne $expected)) {{ \
-                 Invoke-WebRequest -Uri '{WPODS_SETUP_URL}' -OutFile $dest -UseBasicParsing; \
-             }}; \
-             if ((Get-FileHash $dest -Algorithm SHA256).Hash -ne $expected) {{ throw 'SHA256 mismatch' }}; \
-             Start-Process -FilePath $dest -ArgumentList '/SP-','/SILENT','/NORESTART','/TASKS=\"!startup,!desktopicon\"' -Wait"
-        );
-        let install_res = tokio::task::spawn_blocking(move || {
-            std::process::Command::new("powershell.exe")
-                .args([
-                    "-NoProfile",
-                    "-NonInteractive",
-                    "-WindowStyle",
-                    "Hidden",
-                    "-Command",
-                    &script,
-                ])
-                .creation_flags(CREATE_NO_WINDOW)
-                .status()
+        debug!("WPodsService is not installed; launching cached/verified WPods-Setup.exe via UAC");
+        let installer_path = tokio::task::spawn_blocking(ensure_cached_wpods_installer)
+            .await
+            .map_err(|err| connection::Error::Other {
+                source: Box::new(err),
+                location: Location::caller(),
+            })?
+            .map_err(|err| connection::Error::ServiceUnavailable {
+                reason: format!("Não foi possível preparar o instalador do driver WPods: {err}"),
+                source: Some(Box::new(err)),
+                location: Location::caller(),
+            })?;
+
+        let launch_res = tokio::task::spawn_blocking(move || {
+            let path_str = installer_path.to_string_lossy().into_owned();
+            run_elevated_and_wait(
+                &path_str,
+                "/SP- /SILENT /NORESTART /FROMSERVICE=1 /TASKS=!startup,!desktopicon",
+                true,
+            )
         })
         .await;
 
-        if matches!(install_res, Ok(Ok(status)) if status.success()) {
-            let _ = tokio::task::spawn_blocking(close_wpods_tray_client).await;
-            for _ in 0..30 {
-                if open_wpods_pipe(WPODS_AAP_PIPE_NAME, true).await.is_ok() {
-                    return Ok(());
-                }
-                tokio::time::sleep(Duration::from_millis(500)).await;
+        if let Ok(Err(err)) = launch_res {
+            return Err(connection::Error::ServiceUnavailable {
+                reason: format!(
+                    "Permissão de Administrador recusada ao instalar o serviço Bluetooth dos AirPods (WPodsService): {err}"
+                ),
+                source: Some(Box::new(err)),
+                location: Location::caller(),
+            });
+        }
+
+        let _ = tokio::task::spawn_blocking(close_wpods_tray_client).await;
+
+        if tokio::task::spawn_blocking(wpods_waits_for_restart)
+            .await
+            .unwrap_or(false)
+        {
+            return Err(connection::Error::ServiceUnavailable {
+                reason: "Driver Bluetooth dos AirPods (WPods + usbip-win2) instalado com sucesso! Reinicie o Windows uma única vez para ativar os AirPods Pro 2 no AirCore.".to_owned(),
+                source: None,
+                location: Location::caller(),
+            });
+        }
+
+        for _ in 0..30 {
+            if open_wpods_pipe(WPODS_AAP_PIPE_NAME, true).await.is_ok() {
+                return Ok(());
             }
+            tokio::time::sleep(Duration::from_millis(500)).await;
         }
     }
 

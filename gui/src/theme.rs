@@ -35,11 +35,11 @@ pub const SPACE_MD: u16 = 12;
 pub const SPACE_LG: u16 = 16;
 pub const SPACE_XL: u16 = 24;
 
-pub const RADIUS_SM: f32 = 8.0;
-pub const RADIUS_MD: f32 = 12.0;
+pub const RADIUS_SM: f32 = 10.0;
+pub const RADIUS_MD: f32 = 18.0;
 pub const RADIUS_PILL: f32 = 999.0;
 
-pub const MAX_CONTENT_WIDTH: f32 = 880.0;
+pub const MAX_CONTENT_WIDTH: f32 = 680.0;
 pub const NARROW_BREAKPOINT: f32 = 450.0;
 pub const SIDEBAR_BREAKPOINT: f32 = 680.0;
 pub const DRAWER_SINGLE_PANE_BREAKPOINT: f32 = 720.0;
@@ -58,6 +58,7 @@ pub struct AppPalette {
     pub canvas: Color,
     pub card: Color,
     pub recessed: Color,
+    #[allow(dead_code)]
     pub sidebar: Color,
     pub border: Color,
     pub divider: Color,
@@ -85,16 +86,16 @@ impl AppPalette {
     pub fn light() -> Self {
         Self {
             is_dark: false,
-            canvas: Color::from_rgb8(245, 245, 247),
+            canvas: Color::from_rgb8(242, 242, 247),
             card: Color::from_rgb8(255, 255, 255),
-            recessed: Color::from_rgb8(242, 242, 247),
+            recessed: Color::from_rgb8(229, 229, 234),
             sidebar: Color::from_rgb8(255, 255, 255),
-            border: Color::from_rgb8(229, 229, 234),
-            divider: Color::from_rgb8(235, 235, 240),
-            control_border: Color::from_rgb8(209, 209, 214),
-            text_primary: Color::from_rgb8(29, 29, 31),
-            text_secondary: Color::from_rgb8(76, 76, 82),
-            text_tertiary: Color::from_rgb8(88, 88, 94),
+            border: Color::from_rgb8(232, 232, 237),
+            divider: Color::from_rgb8(238, 238, 242),
+            control_border: Color::from_rgb8(216, 216, 222),
+            text_primary: Color::from_rgb8(28, 28, 30),
+            text_secondary: Color::from_rgb8(68, 68, 74),
+            text_tertiary: Color::from_rgb8(80, 80, 86),
             accent: Color::from_rgb8(0, 96, 198),
             accent_text: Color::from_rgb8(0, 90, 186),
             on_accent: Color::WHITE,
@@ -103,11 +104,11 @@ impl AppPalette {
             warning_border: Color::from_rgb8(252, 211, 77),
             warning_text: Color::from_rgb8(133, 77, 14),
             destructive: Color::from_rgb8(178, 22, 32),
-            destructive_tint: Color::from_rgb8(245, 245, 247),
+            destructive_tint: Color::from_rgb8(242, 242, 247),
             destructive_text: Color::from_rgb8(152, 18, 26),
             hover_overlay: Color::from_rgba8(0, 0, 0, 0.035),
             pressed_overlay: Color::from_rgba8(0, 0, 0, 0.07),
-            selected_neutral: Color::from_rgb8(232, 242, 255),
+            selected_neutral: Color::from_rgb8(235, 244, 255),
         }
     }
 
@@ -144,14 +145,14 @@ impl AppPalette {
 
 pub fn apple_light_theme() -> Theme {
     let built = ThemeBuilder::light()
-        .bg_color(Srgba::new(1.0, 1.0, 1.0, 1.0))
+        .bg_color(Srgba::new(242.0 / 255.0, 242.0 / 255.0, 247.0 / 255.0, 1.0))
         .primary_container_bg(Srgba::new(1.0, 1.0, 1.0, 1.0))
-        .text_tint(Srgb::new(29.0 / 255.0, 29.0 / 255.0, 31.0 / 255.0))
+        .text_tint(Srgb::new(28.0 / 255.0, 28.0 / 255.0, 30.0 / 255.0))
         .neutral_tint(Srgb::new(110.0 / 255.0, 110.0 / 255.0, 115.0 / 255.0))
-        .accent(Srgb::new(0.0, 113.0 / 255.0, 227.0 / 255.0))
+        .accent(Srgb::new(0.0, 122.0 / 255.0, 1.0))
         .success(Srgb::new(52.0 / 255.0, 199.0 / 255.0, 89.0 / 255.0))
         .warning(Srgb::new(1.0, 149.0 / 255.0, 0.0))
-        .destructive(Srgb::new(225.0 / 255.0, 45.0 / 255.0, 36.0 / 255.0))
+        .destructive(Srgb::new(1.0, 59.0 / 255.0, 48.0 / 255.0))
         .build();
     Theme::custom(Arc::new(built))
 }
@@ -201,22 +202,127 @@ pub fn card_container(theme: &Theme) -> container::Style {
         background: Some(Background::Color(p.card)),
         border: Border {
             color: p.border,
-            width: 1.0,
+            width: if p.is_dark { 1.0 } else { 0.0 },
             radius: Radius::from(RADIUS_MD),
         },
         shadow: if p.is_dark {
             Shadow::default()
         } else {
             Shadow {
-                color: Color::from_rgba8(15, 23, 42, 0.03),
+                color: Color::from_rgba8(15, 23, 42, 0.028),
                 offset: Vector::new(0.0, 2.0),
-                blur_radius: 8.0,
+                blur_radius: 10.0,
             }
         },
         snap: true,
     }
 }
 
+#[must_use]
+pub fn ios_segmented_track_container(theme: &Theme) -> container::Style {
+    let p = palette(theme);
+    container::Style {
+        icon_color: Some(p.text_primary),
+        text_color: Some(p.text_primary),
+        background: Some(Background::Color(p.recessed)),
+        border: Border {
+            color: Color::TRANSPARENT,
+            width: 0.0,
+            radius: Radius::from(RADIUS_PILL),
+        },
+        shadow: Shadow::default(),
+        snap: true,
+    }
+}
+
+pub fn category_squircle_container(color: Color) -> impl Fn(&Theme) -> container::Style {
+    move |_theme: &Theme| container::Style {
+        icon_color: Some(Color::WHITE),
+        text_color: Some(Color::WHITE),
+        background: Some(Background::Color(color)),
+        border: Border {
+            color: Color::TRANSPARENT,
+            width: 0.0,
+            radius: Radius::from(7.0),
+        },
+        shadow: Shadow::default(),
+        snap: true,
+    }
+}
+
+#[must_use]
+pub fn ios_segment_pill_button(selected: bool) -> cosmic::theme::Button {
+    cosmic::theme::Button::Custom {
+        active: Box::new(move |focused, theme| {
+            let p = palette(theme);
+            let mut style = base_button_style(RADIUS_PILL);
+            if selected {
+                style.background = Some(Background::Color(if p.is_dark {
+                    Color::from_rgb8(99, 99, 102)
+                } else {
+                    Color::WHITE
+                }));
+                style.text_color = Some(p.text_primary);
+                style.icon_color = Some(p.text_primary);
+                style.shadow_offset = Vector::new(0.0, 1.0);
+            } else {
+                style.background = None;
+                style.text_color = Some(p.text_secondary);
+                style.icon_color = Some(p.text_primary);
+            }
+            if focused {
+                style.outline_width = 2.0;
+                style.outline_color = p.accent;
+            }
+            style
+        }),
+        disabled: Box::new(|theme| {
+            let p = palette(theme);
+            let mut style = base_button_style(RADIUS_PILL);
+            style.text_color = Some(p.text_tertiary);
+            style.icon_color = Some(p.text_tertiary);
+            style
+        }),
+        hovered: Box::new(move |focused, theme| {
+            let p = palette(theme);
+            let mut style = base_button_style(RADIUS_PILL);
+            if selected {
+                style.background = Some(Background::Color(if p.is_dark {
+                    Color::from_rgb8(110, 110, 115)
+                } else {
+                    Color::WHITE
+                }));
+            } else {
+                style.background = Some(Background::Color(p.hover_overlay));
+            }
+            style.text_color = Some(p.text_primary);
+            style.icon_color = Some(p.text_primary);
+            if focused {
+                style.outline_width = 2.0;
+                style.outline_color = p.accent;
+            }
+            style
+        }),
+        pressed: Box::new(move |focused, theme| {
+            let p = palette(theme);
+            let mut style = base_button_style(RADIUS_PILL);
+            style.background = Some(Background::Color(if selected {
+                Color::WHITE
+            } else {
+                p.pressed_overlay
+            }));
+            style.text_color = Some(p.text_primary);
+            style.icon_color = Some(p.text_primary);
+            if focused {
+                style.outline_width = 2.0;
+                style.outline_color = p.accent;
+            }
+            style
+        }),
+    }
+}
+
+#[allow(dead_code)]
 #[must_use]
 pub fn sidebar_container(theme: &Theme) -> container::Style {
     let p = palette(theme);
