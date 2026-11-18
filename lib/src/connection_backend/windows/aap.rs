@@ -148,10 +148,13 @@ fn is_wpods_service_registered() -> bool {
 }
 
 fn close_wpods_tray_client() {
-    use std::os::windows::process::CommandExt;
+    use std::{os::windows::process::CommandExt, process::Stdio};
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
     let _ = std::process::Command::new("taskkill.exe")
         .args(["/F", "/IM", "WPods.exe"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
         .creation_flags(CREATE_NO_WINDOW)
         .status();
 }
@@ -212,10 +215,17 @@ fn run_elevated_and_wait(file: &str, params: &str, show_window: bool) -> io::Res
 }
 
 fn ensure_cached_wpods_installer() -> io::Result<std::path::PathBuf> {
-    use std::os::windows::process::CommandExt;
+    use std::{os::windows::process::CommandExt, process::Stdio};
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    const WPODS_SETUP_EXACT_BYTES: u64 = 99_017_726;
 
     let dest = std::env::temp_dir().join("WPods-Setup.exe");
+    if let Ok(meta) = std::fs::metadata(&dest)
+        && meta.len() == WPODS_SETUP_EXACT_BYTES
+    {
+        return Ok(dest);
+    }
+
     let script = format!(
         "$ErrorActionPreference = 'Stop'; \
          $dest = Join-Path $env:TEMP 'WPods-Setup.exe'; \
@@ -234,6 +244,9 @@ fn ensure_cached_wpods_installer() -> io::Result<std::path::PathBuf> {
             "-Command",
             &script,
         ])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
         .creation_flags(CREATE_NO_WINDOW)
         .status()?;
 
