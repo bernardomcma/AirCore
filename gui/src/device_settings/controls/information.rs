@@ -1,16 +1,41 @@
 use std::borrow::Cow;
 
-use cosmic::{Element, iced::core::text::Wrapping, widget};
+use cosmic::{
+    Element,
+    iced::{Length, alignment, core::text::Wrapping},
+    widget,
+};
 
-pub fn information<'a, M>(name: Cow<'a, str>, text: Cow<'a, str>, on_copy: M) -> Element<'a, M>
+use crate::{
+    device_settings::labeled_setting_row,
+    fl,
+    theme::{self, SPACE_SM},
+};
+
+pub fn information<'a, M>(
+    name: Cow<'a, str>,
+    text: Cow<'a, str>,
+    on_copy: M,
+    is_narrow: bool,
+) -> Element<'a, M>
 where
     M: Clone + 'static,
 {
-    widget::settings::item::builder(name)
-        // The copy button being with the title rather than the value isn't ideal, but putting it with the value causes
-        // layout issues. If those layout issues are ever fixed, remove this comment and replace the flex control with
-        // a row containing text and the icon button.
-        .icon(widget::button::icon(widget::icon::from_name("edit-copy-symbolic")).on_press(on_copy))
-        .flex_control(widget::text(text).wrapping(Wrapping::WordOrGlyph))
-        .into()
+    let copy_label = format!("{} {}", fl!("copy"), name);
+    labeled_setting_row(
+        name,
+        widget::row![
+            theme::mono_value(text)
+                .wrapping(Wrapping::WordOrGlyph)
+                .width(Length::Fill),
+            widget::button::icon(widget::icon::from_name("edit-copy-symbolic"))
+                .name(copy_label)
+                .tooltip(fl!("copy"))
+                .on_press(on_copy),
+        ]
+        .spacing(SPACE_SM)
+        .align_y(alignment::Vertical::Center)
+        .width(Length::Fill),
+        is_narrow,
+    )
 }

@@ -10,3 +10,9 @@
 .vscode
 .cargo
 .DS_Store
+.agents
+.taste-skill
+skills-lock.json
+__pycache__/
+*.pyc
+/e2e/artifacts/

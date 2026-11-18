@@ -1,5 +1,5 @@
 language-name = বাংলা
-openscq30 = OpenSCQ30
+openscq30 = AirCore
 device-selection = ডিভাইস বাছুন
 connect = কানেক্ট করুন
 connecting-to = { $name } - এ কানেক্ট করা হচ্ছে

@@ -7,27 +7,35 @@ use cosmic::{
     widget::{self, canvas},
 };
 
-use crate::{device_settings::labeled_setting_row, fl};
+use crate::{
+    components,
+    device_settings::labeled_setting_row,
+    fl,
+    theme::{self, SPACE_MD, SemanticTone},
+};
 
 pub fn hue_color_picker<'a, M>(
     name: Cow<'a, str>,
     hue: f32,
     on_change: impl Fn(f32) -> M + 'a,
+    is_narrow: bool,
 ) -> Element<'a, M>
 where
     M: Clone + 'static,
 {
-    // TODO show a gradient in the background behind the slider
-    // not done yet since iced's gradients only support rgb and not hsv, so something custom would
-    // be necessary.
     labeled_setting_row(
-        name,
+        name.clone(),
         widget::row![
             widget::canvas(HueBox(hue)).width(24).height(24),
-            widget::slider(0.0..=360.0, hue, on_change).description(fl!("color-hue-in-degrees")),
+            widget::slider(0.0..=360.0, hue, on_change)
+                .name(name)
+                .class(theme::apple_slider())
+                .description(fl!("color-hue-in-degrees")),
+            components::pill_badge(format!("{hue:.0}°"), SemanticTone::Neutral),
         ]
         .align_y(alignment::Vertical::Center)
-        .spacing(12),
+        .spacing(SPACE_MD),
+        is_narrow,
     )
 }
 
@@ -40,17 +48,28 @@ impl<Message> canvas::Program<Message, cosmic::Theme, cosmic::Renderer> for HueB
         &self,
         _state: &Self::State,
         renderer: &cosmic::Renderer,
-        _theme: &cosmic::Theme,
+        theme: &cosmic::Theme,
         bounds: cosmic::iced::Rectangle,
         _cursor: cosmic::iced::core::mouse::Cursor,
     ) -> Vec<canvas::Geometry<cosmic::Renderer>> {
         let mut frame = canvas::Frame::new(renderer, bounds.size());
-        let circle = canvas::Path::circle(frame.center(), frame.width() / 2.0);
+        let radius = (frame.width().min(frame.height()) / 2.0 - 1.5).max(1.0);
+        let circle = canvas::Path::circle(frame.center(), radius);
 
         let hsv = Hsv::new(self.0, 1.0, 1.0);
         let rgb: Srgb = hsv.into_color();
 
         frame.fill(&circle, Color::from_rgb(rgb.red, rgb.green, rgb.blue));
+        frame.stroke(
+            &circle,
+            canvas::Stroke {
+                style: canvas::stroke::Style::Solid(theme::palette(theme).control_border),
+                width: 1.0,
+                line_cap: canvas::LineCap::Round,
+                line_join: canvas::LineJoin::Round,
+                line_dash: canvas::LineDash::default(),
+            },
+        );
         vec![frame.into_geometry()]
     }
 }

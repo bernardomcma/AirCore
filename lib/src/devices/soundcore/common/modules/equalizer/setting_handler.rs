@@ -10,7 +10,9 @@ use crate::{
     api::settings::{self, Setting, SettingId, Value},
     devices::soundcore::common::{
         modules::equalizer::{
-            EqualizerModuleSettings, InvisibleBandsMode,
+            COMMON_BAND_HZ, COMMON_FRACTION_DIGITS, COMMON_MAX_VOLUME, COMMON_MIN_VOLUME,
+            COMMON_PRESET_BANDS, COMMON_VISIBLE_BANDS, EqualizerModuleSettings, EqualizerPreset,
+            InvisibleBandsMode, common_genre_presets,
             custom_equalizer_profile_store::CustomEqualizerProfileStore,
         },
         settings_manager::{SettingHandler, SettingHandlerError, SettingHandlerResult},
@@ -66,7 +68,7 @@ impl<
 {
     pub fn new(
         profile_store: Arc<CustomEqualizerProfileStore>,
-        module_settings: EqualizerModuleSettings<
+        mut module_settings: EqualizerModuleSettings<
             VISIBLE_BANDS,
             PRESET_BANDS,
             MIN_VOLUME,
@@ -83,6 +85,36 @@ impl<
                 PRESET_BANDS >= VISIBLE_BANDS,
                 "there can't be fewer preset bands than visible bands",
             );
+        }
+        if let Some(custom_preset_id) = module_settings.custom_preset_id
+            && VISIBLE_BANDS == COMMON_VISIBLE_BANDS
+            && PRESET_BANDS == COMMON_PRESET_BANDS
+            && MIN_VOLUME == COMMON_MIN_VOLUME
+            && MAX_VOLUME == COMMON_MAX_VOLUME
+            && FRACTION_DIGITS == COMMON_FRACTION_DIGITS
+            && module_settings.band_hz.as_slice() == COMMON_BAND_HZ.as_slice()
+        {
+            for genre in common_genre_presets() {
+                if module_settings
+                    .presets
+                    .iter()
+                    .any(|existing| existing.name == genre.name)
+                {
+                    continue;
+                }
+                let adjustments: [i16; PRESET_BANDS] = genre
+                    .volume_adjustments
+                    .adjustments()
+                    .as_slice()
+                    .try_into()
+                    .expect("PRESET_BANDS == COMMON_PRESET_BANDS");
+                module_settings.presets.push(EqualizerPreset {
+                    id: custom_preset_id,
+                    name: genre.name,
+                    localized_name: genre.localized_name,
+                    volume_adjustments: VolumeAdjustments::new(adjustments),
+                });
+            }
         }
         Self {
             custom_profiles_receiver: profile_store.subscribe(),
@@ -213,10 +245,19 @@ fn get_inner<
 ) -> Option<crate::api::settings::Setting> {
     Some(match setting {
         EqualizerSetting::PresetEqualizerProfile => {
+            let channel_1_visible = equalizer_configuration
+                .volume_adjustments_channel_1()
+                .and_then(|va| va.adjustments().get(..VISIBLE_BANDS));
             let maybe_preset = module_settings
                 .presets
                 .iter()
-                .find(|preset| preset.id == equalizer_configuration.preset_id())
+                .find(|preset| {
+                    preset.id == equalizer_configuration.preset_id()
+                        && (Some(preset.id) != module_settings.custom_preset_id
+                            || channel_1_visible.is_some()
+                                && channel_1_visible
+                                    == preset.volume_adjustments.adjustments().get(..VISIBLE_BANDS))
+                })
                 .copied();
             Setting::PresetEqualizerProfileSelect {
                 equalizer: settings::Equalizer {
@@ -274,12 +315,13 @@ fn get_inner<
                         custom_profiles
                             .iter()
                             .find(|(_, v)| {
-                                v[..VISIBLE_BANDS]
+                                v.get(..VISIBLE_BANDS)
                                     == equalizer_configuration
                                         .volume_adjustments_channel_1()
                                         .copied()
                                         .unwrap_or_default()
-                                        .adjustments()[..VISIBLE_BANDS]
+                                        .adjustments()
+                                        .get(..VISIBLE_BANDS)
                             })
                             .map(|(name, _)| name.clone().into())
                     })
@@ -662,5 +704,200 @@ mod tests {
         };
         assert_eq!(value, None);
         assert_eq!(state.equalizer_configuration.preset_id(), 0xfefe);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn genre_preset_roundtrip_lookup_all_custom_id_presets() {
+        let (_, setting_handler, _) = set_up().await;
+        let mut state = TestStateWithEq {
+            equalizer_configuration: EqualizerConfiguration::new_all_bands_present(
+                0x0000,
+                [VolumeAdjustments::new([0; 10]); 2],
+            ),
+        };
+
+        for preset in crate::devices::soundcore::common::modules::equalizer::common_genre_presets()
+        {
+            setting_handler
+                .set(
+                    &mut state,
+                    &SettingId::PresetEqualizerProfile,
+                    Value::OptionalString(Some(preset.name.into())),
+                )
+                .await
+                .unwrap();
+            assert_eq!(state.equalizer_configuration.preset_id(), 0xfefe);
+            assert_eq!(
+                &state
+                    .equalizer_configuration
+                    .volume_adjustments_channel_1()
+                    .unwrap()
+                    .adjustments()[..8],
+                &preset.volume_adjustments.adjustments()[..8]
+            );
+
+            let Setting::PresetEqualizerProfileSelect { value, .. } = setting_handler
+                .get(&state, &SettingId::PresetEqualizerProfile)
+                .unwrap()
+            else {
+                panic!("setting type should be PresetEqualizerProfileSelect");
+            };
+            assert_eq!(value, Some(Cow::Borrowed(preset.name)));
+
+            let Setting::ModifiableSelect {
+                value: custom_value,
+                ..
+            } = setting_handler
+                .get(&state, &SettingId::CustomEqualizerProfile)
+                .unwrap()
+            else {
+                panic!("setting type should be ModifiableSelect");
+            };
+            assert_eq!(custom_value, None);
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn hardware_preset_lookup_ignores_curve_and_matches_by_id() {
+        let (_, setting_handler, _) = set_up().await;
+        let mut state = TestStateWithEq {
+            equalizer_configuration: EqualizerConfiguration::new_all_bands_present(
+                0x0000,
+                [VolumeAdjustments::new([0; 10]); 2],
+            ),
+        };
+
+        setting_handler
+            .set(
+                &mut state,
+                &SettingId::PresetEqualizerProfile,
+                Value::OptionalString(Some("Acoustic".into())),
+            )
+            .await
+            .unwrap();
+        assert_eq!(state.equalizer_configuration.preset_id(), 0x0001);
+        let Setting::PresetEqualizerProfileSelect { value, .. } = setting_handler
+            .get(&state, &SettingId::PresetEqualizerProfile)
+            .unwrap()
+        else {
+            panic!("setting type should be PresetEqualizerProfileSelect");
+        };
+        assert_eq!(value, Some(Cow::Borrowed("Acoustic")));
+
+        state.equalizer_configuration = EqualizerConfiguration::new_all_bands_present(
+            0x0001,
+            [VolumeAdjustments::new([5, 5, 5, 5, 5, 5, 5, 5, 0, -120]); 2],
+        );
+        let Setting::PresetEqualizerProfileSelect { value, .. } = setting_handler
+            .get(&state, &SettingId::PresetEqualizerProfile)
+            .unwrap()
+        else {
+            panic!("setting type should be PresetEqualizerProfileSelect");
+        };
+        assert_eq!(value, Some(Cow::Borrowed("Acoustic")));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn custom_equalizer_profile_vs_genre_preset_vs_none() {
+        let (_, setting_handler, _) = set_up().await;
+        let mut state = TestStateWithEq {
+            equalizer_configuration: EqualizerConfiguration::new_all_bands_present(
+                0x0000,
+                [VolumeAdjustments::new([0; 10]); 2],
+            ),
+        };
+
+        setting_handler
+            .set(
+                &mut state,
+                &SettingId::PresetEqualizerProfile,
+                Value::OptionalString(Some("HardTechno".into())),
+            )
+            .await
+            .unwrap();
+        setting_handler
+            .set(
+                &mut state,
+                &SettingId::VolumeAdjustments,
+                Value::I16Vec(vec![15, -15, 10, 0, 0, 10, 20, 25]),
+            )
+            .await
+            .unwrap();
+        setting_handler
+            .set(
+                &mut state,
+                &SettingId::CustomEqualizerProfile,
+                Value::ModifiableSelectCommand(settings::ModifiableSelectCommand::Add(
+                    "my eq".into(),
+                )),
+            )
+            .await
+            .unwrap();
+        setting_handler
+            .set(
+                &mut state,
+                &SettingId::CustomEqualizerProfile,
+                Value::String("my eq".into()),
+            )
+            .await
+            .unwrap();
+
+        let Setting::PresetEqualizerProfileSelect { value, .. } = setting_handler
+            .get(&state, &SettingId::PresetEqualizerProfile)
+            .unwrap()
+        else {
+            panic!("setting type should be PresetEqualizerProfileSelect");
+        };
+        assert_eq!(value, None);
+
+        let Setting::ModifiableSelect {
+            value: custom_value,
+            ..
+        } = setting_handler
+            .get(&state, &SettingId::CustomEqualizerProfile)
+            .unwrap()
+        else {
+            panic!("setting type should be ModifiableSelect");
+        };
+        assert_eq!(custom_value, Some(Cow::from("my eq")));
+
+        setting_handler
+            .set(
+                &mut state,
+                &SettingId::PresetEqualizerProfile,
+                Value::OptionalString(Some("Acoustic".into())),
+            )
+            .await
+            .unwrap();
+        let expected_acoustic = state
+            .equalizer_configuration
+            .volume_adjustments_channel_1()
+            .unwrap()
+            .adjustments()
+            .to_vec();
+        setting_handler
+            .set(
+                &mut state,
+                &SettingId::PresetEqualizerProfile,
+                Value::OptionalString(None),
+            )
+            .await
+            .unwrap();
+        let Setting::PresetEqualizerProfileSelect { value, .. } = setting_handler
+            .get(&state, &SettingId::PresetEqualizerProfile)
+            .unwrap()
+        else {
+            panic!("setting type should be PresetEqualizerProfileSelect");
+        };
+        assert_eq!(value, None);
+        assert_eq!(state.equalizer_configuration.preset_id(), 0xfefe);
+        assert_eq!(
+            state
+                .equalizer_configuration
+                .volume_adjustments_channel_1()
+                .unwrap()
+                .adjustments(),
+            expected_acoustic.as_slice()
+        );
     }
 }

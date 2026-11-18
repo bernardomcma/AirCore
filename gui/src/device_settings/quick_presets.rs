@@ -1,5 +1,5 @@
 use cosmic::{
-    Element, Task,
+    Apply, Element, Task,
     app::ContextDrawer,
     iced::{Length, alignment},
     widget,
@@ -7,7 +7,12 @@ use cosmic::{
 use openscq30_i18n::Translate;
 use openscq30_lib::{quick_presets::QuickPresetsHandler, settings, storage::QuickPreset};
 
-use crate::{app::DebugOpenSCQ30Device, fl, handle_soft_error, utils::coalesce_result};
+use crate::{
+    app::DebugOpenSCQ30Device,
+    components, fl, handle_soft_error,
+    theme::{self, SPACE_LG, SPACE_MD, SPACE_SM, SPACE_XS},
+    utils::coalesce_result,
+};
 
 #[derive(Debug, Clone)]
 pub enum Message {
@@ -66,30 +71,89 @@ impl QuickPresetsModel {
         (model, task)
     }
 
-    pub fn view(&self) -> Element<'_, Message> {
-        if let Some(quick_presets) = &self.quick_presets {
-            widget::column![
-                widget::button::standard(fl!("create-quick-preset"))
-                    .on_press(Message::ShowCreateQuickPresetDialog),
-                widget::column(quick_presets.iter().enumerate().map(|(i, preset)| {
-                    widget::row![
-                        widget::text(&preset.name).width(Length::Fill),
-                        widget::button::standard(fl!("activate"))
-                            .on_press(Message::ActivateQuickPreset(i)),
-                        widget::button::standard(fl!("edit")).on_press(Message::EditQuickPreset(i)),
-                        widget::button::destructive(fl!("delete"))
-                            .on_press(Message::ShowDeleteQuickPresetDialog(i)),
-                    ]
-                    .padding(10)
-                    .align_y(alignment::Vertical::Center)
-                    .into()
-                })),
-            ]
-            .width(Length::Fill)
-            .into()
+    pub fn view(&self, is_narrow: bool) -> Element<'_, Message> {
+        let create_btn = components::primary_button(
+            fl!("create-quick-preset"),
+            Message::ShowCreateQuickPresetDialog,
+        );
+
+        let header: Element<'_, Message> = if is_narrow {
+            widget::column![theme::page_title(fl!("quick-presets")), create_btn]
+                .spacing(SPACE_SM)
+                .width(Length::Fill)
+                .into()
         } else {
-            widget::text(fl!("loading-item", item = fl!("quick-presets"))).into()
-        }
+            components::page_header(fl!("quick-presets"), None, Some(create_btn))
+        };
+
+        let body: Element<'_, Message> = if let Some(quick_presets) = &self.quick_presets {
+            if quick_presets.is_empty() {
+                components::empty_state(
+                    crate::icons::openscq30(),
+                    fl!("no-quick-presets"),
+                    fl!("no-quick-presets-hint"),
+                    None,
+                )
+            } else {
+                widget::column(quick_presets.iter().enumerate().map(|(i, preset)| {
+                    let actions = widget::row![
+                        components::primary_button(
+                            fl!("activate"),
+                            Message::ActivateQuickPreset(i)
+                        ),
+                        components::secondary_button(fl!("edit"), Message::EditQuickPreset(i)),
+                        components::destructive_button(
+                            fl!("delete"),
+                            Message::ShowDeleteQuickPresetDialog(i),
+                        ),
+                    ]
+                    .spacing(SPACE_SM)
+                    .align_y(alignment::Vertical::Center);
+
+                    let content: Element<'_, Message> = if is_narrow {
+                        widget::column![
+                            theme::row_title(&preset.name).width(Length::Fill),
+                            widget::container(actions)
+                                .width(Length::Fill)
+                                .align_x(alignment::Horizontal::Right),
+                        ]
+                        .spacing(SPACE_MD)
+                        .width(Length::Fill)
+                        .into()
+                    } else {
+                        widget::row![theme::row_title(&preset.name).width(Length::Fill), actions]
+                            .spacing(SPACE_MD)
+                            .align_y(alignment::Vertical::Center)
+                            .width(Length::Fill)
+                            .into()
+                    };
+
+                    components::elevated_card(content).into()
+                }))
+                .spacing(SPACE_MD)
+                .width(Length::Fill)
+                .into()
+            }
+        } else {
+            components::elevated_card(
+                widget::row![
+                    widget::progress_bar::indeterminate_circular().size(24.0),
+                    widget::text::body(fl!("loading-item", item = fl!("quick-presets"))),
+                ]
+                .spacing(SPACE_MD)
+                .align_y(alignment::Vertical::Center),
+            )
+            .into()
+        };
+
+        widget::scrollable(components::page_frame(
+            widget::column![header, body]
+                .spacing(SPACE_LG)
+                .width(Length::Fill),
+        ))
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .into()
     }
 
     pub fn dialog(&self) -> Option<Element<'_, Message>> {
@@ -99,6 +163,7 @@ impl QuickPresetsModel {
                 .control(
                     widget::text_input(fl!("name"), name)
                         .id(widget::Id::new("create-quick-preset-name"))
+                        .style(theme::apple_text_input())
                         .on_input(Message::SetCreateQuickPresetName)
                         .on_submit(|name| Message::CreateQuickPreset(Some(name))),
                 )
@@ -127,36 +192,51 @@ impl QuickPresetsModel {
     pub fn context_drawer(&self) -> Option<ContextDrawer<'_, Message>> {
         self.editing_quick_preset
             .as_ref()
-            .map(|editing_quick_preset| ContextDrawer {
-                title: Some(editing_quick_preset.name.as_str().into()),
-                actions: None,
-                header: None,
-                content: widget::column(editing_quick_preset.fields.iter().enumerate().map(
-                    |(i, field)| {
+            .map(|editing_quick_preset| {
+                let rows: Vec<Element<'_, Message>> = editing_quick_preset
+                    .fields
+                    .iter()
+                    .enumerate()
+                    .map(|(i, field)| {
                         widget::column![
                             widget::toggler(field.is_enabled)
                                 .label(field.setting_id.translate())
                                 .width(Length::Fill)
+                                .spacing(SPACE_MD)
                                 .on_toggle(move |enabled| {
                                     Message::EditQuickPresetToggleField(i, enabled)
                                 }),
-                            widget::text::body(settings::localize_value(
+                            theme::row_subtitle(settings::localize_value(
                                 self.device.setting(&field.setting_id).as_ref(),
                                 &field.value,
                             )),
                         ]
-                        .padding(8)
+                        .spacing(SPACE_XS)
+                        .width(Length::Fill)
                         .into()
-                    },
-                ))
-                .push(
-                    widget::button::standard(fl!("overwrite-with-current-settings")).on_press(
-                        Message::SnapshotQuickPresetSettings(editing_quick_preset.name.to_owned()),
-                    ),
-                )
-                .into(),
-                footer: None,
-                on_close: Message::EditQuickPresetClose,
+                    })
+                    .collect();
+
+                let content = widget::column![
+                    components::inset_grouped_section(None, rows),
+                    widget::button::standard(fl!("overwrite-with-current-settings"))
+                        .on_press(Message::SnapshotQuickPresetSettings(
+                            editing_quick_preset.name.to_owned(),
+                        ))
+                        .width(Length::Fill),
+                ]
+                .spacing(SPACE_LG)
+                .padding([SPACE_SM, SPACE_MD])
+                .width(Length::Fill);
+
+                ContextDrawer {
+                    title: Some(editing_quick_preset.name.as_str().into()),
+                    actions: None,
+                    header: None,
+                    content: content.apply(Element::from),
+                    footer: None,
+                    on_close: Message::EditQuickPresetClose,
+                }
             })
     }
 
@@ -272,9 +352,11 @@ impl QuickPresetsModel {
                 if let Some(preset) = &mut self.editing_quick_preset {
                     let preset_name = preset.name.to_owned();
 
-                    // eagerly update the dispalyed value. ideally we would revert back to
+                    // eagerly update the displayed value. ideally we would revert back to
                     // what it was if the returned future fails.
-                    let field = &mut preset.fields[field_index];
+                    let Some(field) = preset.fields.get_mut(field_index) else {
+                        return Action::None;
+                    };
                     field.is_enabled = is_enabled;
 
                     let setting_id = field.setting_id;
@@ -332,7 +414,29 @@ impl QuickPresetsModel {
         .map(coalesce_result)
     }
 
-    pub fn close_dialog(&mut self) {
-        self.dialog = None;
+    pub fn has_dialog(&self) -> bool {
+        self.dialog.is_some()
+    }
+
+    pub fn close_dialog(&mut self) -> bool {
+        if self.dialog.is_some() {
+            self.dialog = None;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn is_drawer_open(&self) -> bool {
+        self.editing_quick_preset.is_some()
+    }
+
+    pub fn close_drawer(&mut self) -> bool {
+        if self.editing_quick_preset.is_some() {
+            self.editing_quick_preset = None;
+            true
+        } else {
+            false
+        }
     }
 }

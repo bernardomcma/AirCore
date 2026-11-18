@@ -91,9 +91,16 @@ impl Throttle {
         Some(setting)
     }
 
+    pub fn cancel_setting(&mut self, setting_id: &SettingId) {
+        self.queue.remove(setting_id);
+    }
+
     pub fn trigger(&mut self) -> Task<Message> {
         self.is_pending = false;
         let queue = mem::take(&mut self.queue);
+        if queue.is_empty() {
+            return Task::none();
+        }
         let device = self.device.clone();
         Task::future(async move {
             if let Err(err) = device.set_setting_values(queue.into_iter().collect()).await {
@@ -109,6 +116,64 @@ impl Throttle {
             Message::None => Action::None,
             Message::Trigger => Action::Task(self.trigger()),
             Message::Error(err) => Action::Error(err),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use macaddr::MacAddr6;
+    use openscq30_lib::{DeviceModel, OpenSCQ30Session, storage::PairedDevice};
+
+    use super::*;
+
+    #[tokio::test]
+    async fn cancel_setting_clears_queued_volume_adjustments_before_trigger() {
+        let config_dir = tempfile::tempdir().unwrap();
+        let session = OpenSCQ30Session::new(config_dir.path().join("database.sqlite"))
+            .await
+            .unwrap();
+        session
+            .pair(PairedDevice {
+                mac_address: MacAddr6::nil(),
+                model: DeviceModel::SoundcoreA3028,
+                is_demo: true,
+            })
+            .await
+            .unwrap();
+        let device = session.connect(MacAddr6::nil()).await.unwrap();
+
+        let original_values = match device.setting(&SettingId::VolumeAdjustments).unwrap() {
+            Setting::Equalizer { value, .. } => value,
+            other => panic!("expected Equalizer, got {other:?}"),
+        };
+        let staged_values = vec![25_i16; original_values.len()];
+        assert_ne!(original_values, staged_values);
+
+        let mut throttle = Throttle::new(device.clone());
+        assert!(
+            throttle
+                .set_setting(SettingId::VolumeAdjustments, staged_values.clone().into())
+                .is_some()
+        );
+        assert!(throttle.is_pending);
+        match throttle.setting(&SettingId::VolumeAdjustments).unwrap() {
+            Setting::Equalizer { value, .. } => assert_eq!(value, staged_values),
+            other => panic!("expected Equalizer, got {other:?}"),
+        }
+
+        throttle.cancel_setting(&SettingId::VolumeAdjustments);
+        match throttle.setting(&SettingId::VolumeAdjustments).unwrap() {
+            Setting::Equalizer { value, .. } => assert_eq!(value, original_values),
+            other => panic!("expected Equalizer, got {other:?}"),
+        }
+
+        let _ = throttle.trigger();
+        assert!(!throttle.is_pending);
+        assert!(throttle.queue.is_empty());
+        match device.setting(&SettingId::VolumeAdjustments).unwrap() {
+            Setting::Equalizer { value, .. } => assert_eq!(value, original_values),
+            other => panic!("expected Equalizer, got {other:?}"),
         }
     }
 }

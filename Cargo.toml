@@ -15,8 +15,8 @@ resolver = "3"
 [workspace.package]
 version = "2.13.0"
 license = "GPL-3.0-or-later"
-repository = "https://github.com/Oppzippy/OpenSCQ30"
-authors = ["Kyle Scheuing <kyle@kylescheuing.com>"]
+repository = "https://github.com/bernardomcma/AirCore"
+authors = ["Bernardo <https://github.com/bernardomcma>", "Kyle Scheuing <kyle@kylescheuing.com>"]
 
 [workspace.lints.clippy]
 use_self = "warn"

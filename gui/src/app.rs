@@ -11,7 +11,7 @@ use std::{
 use cosmic::{
     Application, ApplicationExt, Apply, Task,
     app::{Core, context_drawer::ContextDrawer},
-    iced::{Length, alignment, event, keyboard},
+    iced::{Length, alignment, core::text::Wrapping, event, keyboard, window},
     widget::{self, menu::KeyBind, nav_bar},
 };
 use i18n_embed::unic_langid::LanguageIdentifier;
@@ -23,9 +23,11 @@ use tokio::{select, sync::Semaphore};
 
 use crate::{
     add_device::{self, AddDeviceModel},
+    components,
     config::{AppTheme, Config},
     device_selection::{self, DeviceSelectionModel},
     device_settings, fl,
+    theme::{self, DRAWER_SINGLE_PANE_BREAKPOINT, SPACE_LG, SPACE_MD, SPACE_SM},
     utils::coalesce_result,
 };
 
@@ -43,12 +45,12 @@ pub struct AppModel {
     available_languages: Vec<Option<LanguageIdentifier>>,
     theme_names: Vec<String>,
     key_binds: HashMap<KeyBind, KeyBindAction>,
+    window_width: f32,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum KeyBindAction {
     Settings,
-    CloseDialog,
 }
 
 pub struct AppFlags {
@@ -56,6 +58,7 @@ pub struct AppFlags {
     pub config_dir: PathBuf,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ContextDrawerScreen {
     About,
     Settings,
@@ -163,54 +166,13 @@ impl Application for AppModel {
     }
 
     fn init(core: Core, flags: Self::Flags) -> (Self, cosmic::app::Task<Self::Message>) {
-        let about = widget::about::About::default()
-            .name(fl!("openscq30"))
-            .icon(crate::icons::openscq30())
-            .version(env!("CARGO_PKG_VERSION"))
-            .author(env!("CARGO_PKG_AUTHORS"))
-            .license(env!("CARGO_PKG_LICENSE"))
-            .links([(env!("CARGO_PKG_REPOSITORY"), env!("CARGO_PKG_REPOSITORY"))]);
-
         let session = Arc::new(
             futures::executor::block_on(OpenSCQ30Session::new(
                 flags.config_dir.join("database.sqlite"),
             ))
             .expect("database is required to run"),
         );
-        let (model, task) = DeviceSelectionModel::new(session.clone());
-        let (available_languages, available_language_names) =
-            iter::once((None, Cow::Owned(fl!("default"))))
-                .chain(
-                    crate::i18n::languages()
-                        .map(|(identifier, name)| (Some(identifier), Cow::Owned(name))),
-                )
-                .collect::<(Vec<_>, Vec<_>)>();
-        let mut app = Self {
-            core,
-            screen: Screen::DeviceSelection(model),
-            dialog_page: None,
-            session,
-            warnings: VecDeque::with_capacity(5),
-            config: flags.config,
-            config_dir: flags.config_dir,
-            about,
-            context_drawer_screen: None,
-            available_language_names,
-            available_languages,
-            theme_names: AppTheme::VARIANTS
-                .iter()
-                .map(|theme| theme.translate())
-                .collect(),
-            key_binds: key_binds(),
-        };
-        let command = app.update_title();
-        (
-            app,
-            cosmic::Task::batch([
-                command,
-                task.map(Message::DeviceSelectionScreen).map(Into::into),
-            ]),
-        )
+        Self::with_session(core, flags, session)
     }
 
     fn subscription(&self) -> cosmic::iced::Subscription<Self::Message> {
@@ -229,6 +191,15 @@ impl Application for AppModel {
             }
             _ => None,
         })
+    }
+
+    fn on_window_resize(&mut self, _id: window::Id, width: f32, _height: f32) {
+        self.window_width = width;
+    }
+
+    fn on_escape(&mut self) -> cosmic::app::Task<Self::Message> {
+        self.dismiss_topmost_overlay();
+        Task::none()
     }
 
     fn nav_model(&self) -> Option<&nav_bar::Model> {
@@ -253,6 +224,8 @@ impl Application for AppModel {
             Screen::DeviceSelection(_) => Vec::new(),
             _ => vec![
                 widget::button::icon(widget::icon::from_name("go-previous-symbolic"))
+                    .name(fl!("back"))
+                    .tooltip(fl!("back"))
                     .on_press(Message::BackToDeviceSelection)
                     .into(),
             ],
@@ -262,35 +235,60 @@ impl Application for AppModel {
     fn header_end(&self) -> Vec<cosmic::Element<'_, Self::Message>> {
         vec![
             widget::button::icon(widget::icon::from_name("preferences-system-symbolic"))
+                .name(fl!("settings"))
+                .tooltip(fl!("settings"))
+                .selected(matches!(
+                    self.context_drawer_screen,
+                    Some(ContextDrawerScreen::Settings)
+                ))
                 .on_press(Message::ToggleSettings)
                 .into(),
             widget::button::icon(widget::icon::from_name("help-about-symbolic"))
+                .name(fl!("about"))
+                .tooltip(fl!("about"))
+                .selected(matches!(
+                    self.context_drawer_screen,
+                    Some(ContextDrawerScreen::About)
+                ))
                 .on_press(Message::ToggleAbout)
                 .into(),
         ]
     }
 
     fn view(&self) -> cosmic::Element<'_, Self::Message> {
-        widget::Column::with_capacity(2)
-            .push_maybe(
-                self.warnings.front().map(|message| {
-                    crate::warning::warning(message).on_close(Message::CloseWarning)
-                }),
-            )
-            .push(match &self.screen {
-                Screen::DeviceSelection(device_selection_model) => cosmic::Element::from(
-                    device_selection_model
+        let main_content: cosmic::Element<'_, Self::Message> =
+            if self.is_drawer_open() && self.window_width < DRAWER_SINGLE_PANE_BREAKPOINT {
+                widget::space::horizontal().width(Length::Fill).into()
+            } else {
+                match &self.screen {
+                    Screen::DeviceSelection(device_selection_model) => cosmic::Element::from(
+                        device_selection_model
+                            .view()
+                            .map(Message::DeviceSelectionScreen),
+                    ),
+                    Screen::AddDevice(add_device_model) => {
+                        add_device_model.view().map(Message::AddDeviceScreen)
+                    }
+                    Screen::Connecting { canceled: _, name } => self.view_cancel(name),
+                    Screen::DeviceSettings(device_settings_model) => device_settings_model
                         .view()
-                        .map(Message::DeviceSelectionScreen),
-                ),
-                Screen::AddDevice(add_device_model) => {
-                    add_device_model.view().map(Message::AddDeviceScreen)
+                        .map(Message::DeviceSettingsScreen),
                 }
-                Screen::Connecting { canceled: _, name } => self.view_cancel(name),
-                Screen::DeviceSettings(device_settings_model) => device_settings_model
-                    .view()
-                    .map(Message::DeviceSettingsScreen),
-            })
+            };
+
+        widget::Column::with_capacity(2)
+            .push_maybe(self.warnings.front().map(|message| {
+                widget::container(crate::warning::warning(message).on_close(Message::CloseWarning))
+                    .padding([SPACE_SM, SPACE_LG, 0, SPACE_LG])
+                    .width(Length::Fill)
+            }))
+            .push(main_content)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .apply(widget::container)
+            .class(cosmic::theme::Container::custom(theme::canvas_container))
+            .width(Length::Fill)
+            .height(Length::Fill)
             .into()
     }
 
@@ -331,48 +329,75 @@ impl Application for AppModel {
                     |url| Message::OpenUrl(url.to_owned()),
                     Message::CloseContextDrawer,
                 )),
-                ContextDrawerScreen::Settings => Some(
-                    cosmic::app::context_drawer::context_drawer(
-                        widget::column![
-                            widget::settings::item::builder(fl!("preferred-language"))
-                                .flex_control(widget::dropdown(
-                                    &self.available_language_names,
-                                    Some(
-                                        self.config
-                                            .get()
-                                            .preferred_language
-                                            .as_ref()
-                                            .and_then(|preferred_language| {
-                                                LanguageIdentifier::from_str(preferred_language)
-                                                    .ok()
-                                            })
-                                            .and_then(|preferred_language| {
-                                                self.available_languages
-                                                    .iter()
-                                                    .skip(1)
-                                                    .position(|l| {
-                                                        l.as_ref() == Some(&preferred_language)
-                                                    })
-                                                    .map(|index| index + 1)
-                                            })
-                                            .unwrap_or_default(),
-                                    ),
-                                    Message::SetPreferredLanguage,
-                                )),
-                            widget::settings::item::builder(fl!("theme")).flex_control(
+                ContextDrawerScreen::Settings => {
+                    let selected_language_index = self
+                        .config
+                        .get()
+                        .preferred_language
+                        .as_ref()
+                        .and_then(|preferred_language| {
+                            LanguageIdentifier::from_str(preferred_language).ok()
+                        })
+                        .and_then(|preferred_language| {
+                            self.available_languages
+                                .iter()
+                                .skip(1)
+                                .position(|l| l.as_ref() == Some(&preferred_language))
+                                .map(|index| index + 1)
+                        })
+                        .unwrap_or_default();
+
+                    let selected_theme_index = AppTheme::VARIANTS
+                        .iter()
+                        .position(|theme| *theme == self.config.get().theme);
+
+                    let appearance_section = components::inset_grouped_section(
+                        Some(fl!("appearance").into()),
+                        vec![
+                            widget::column![
+                                widget::text::body(fl!("theme")),
                                 widget::dropdown(
                                     &self.theme_names,
-                                    AppTheme::VARIANTS
-                                        .iter()
-                                        .position(|theme| *theme == self.config.get().theme),
+                                    selected_theme_index,
                                     Message::SetTheme,
                                 )
-                            ),
+                                .width(Length::Fill),
+                            ]
+                            .spacing(SPACE_SM)
+                            .width(Length::Fill)
+                            .into(),
                         ],
-                        Message::CloseContextDrawer,
+                    );
+
+                    let language_section = components::inset_grouped_section(
+                        Some(fl!("language").into()),
+                        vec![
+                            widget::column![
+                                widget::text::body(fl!("preferred-language")),
+                                widget::dropdown(
+                                    &self.available_language_names,
+                                    Some(selected_language_index),
+                                    Message::SetPreferredLanguage,
+                                )
+                                .width(Length::Fill),
+                            ]
+                            .spacing(SPACE_SM)
+                            .width(Length::Fill)
+                            .into(),
+                        ],
+                    );
+
+                    Some(
+                        cosmic::app::context_drawer::context_drawer(
+                            widget::column![appearance_section, language_section]
+                                .spacing(SPACE_LG)
+                                .padding([SPACE_SM, SPACE_MD])
+                                .width(Length::Fill),
+                            Message::CloseContextDrawer,
+                        )
+                        .title(fl!("settings")),
                     )
-                    .title(fl!("settings")),
-                ),
+                }
             }
         } else {
             match &self.screen {
@@ -400,16 +425,23 @@ impl Application for AppModel {
                     AddDevice(add_device::Action),
                     DeviceSettings(device_settings::Action),
                 }
-                let action = match &mut self.screen {
-                    Screen::AddDevice(add_device) => Some(ActionKind::AddDevice(
-                        add_device.on_key_pressed(modifiers, &key, &physical_key),
-                    )),
-                    Screen::DeviceSettings(device_settings) => Some(ActionKind::DeviceSettings(
-                        device_settings.on_key_pressed(modifiers, &key, &physical_key),
-                    )),
-                    _ => None,
+                let mut handled_action = None;
+                match &mut self.screen {
+                    Screen::AddDevice(add_device) => {
+                        let action = add_device.on_key_pressed(modifiers, &key, &physical_key);
+                        if !matches!(action, add_device::Action::None) {
+                            handled_action = Some(ActionKind::AddDevice(action));
+                        }
+                    }
+                    Screen::DeviceSettings(device_settings) => {
+                        let action = device_settings.on_key_pressed(modifiers, &key, &physical_key);
+                        if !matches!(action, device_settings::Action::None) {
+                            handled_action = Some(ActionKind::DeviceSettings(action));
+                        }
+                    }
+                    _ => (),
                 }
-                .or_else(|| {
+                let action = handled_action.or_else(|| {
                     self.key_binds
                         .iter()
                         .find(|(key_bind, _)| {
@@ -420,9 +452,6 @@ impl Application for AppModel {
                 match action {
                     Some(ActionKind::Global(action)) => match action {
                         KeyBindAction::Settings => self.toggle_settings(),
-                        KeyBindAction::CloseDialog => {
-                            self.dialog_page = None;
-                        }
                     },
                     Some(ActionKind::AddDevice(action)) => {
                         return self.handle_add_device_action(action);
@@ -634,6 +663,83 @@ impl Application for AppModel {
 }
 
 impl AppModel {
+    fn with_session(
+        core: Core,
+        flags: AppFlags,
+        session: Arc<OpenSCQ30Session>,
+    ) -> (Self, cosmic::app::Task<Message>) {
+        let about = widget::about::About::default()
+            .name(fl!("openscq30"))
+            .icon(crate::icons::openscq30())
+            .version(env!("CARGO_PKG_VERSION"))
+            .author(env!("CARGO_PKG_AUTHORS"))
+            .license(env!("CARGO_PKG_LICENSE"))
+            .links([(env!("CARGO_PKG_REPOSITORY"), env!("CARGO_PKG_REPOSITORY"))]);
+
+        let (model, task) = DeviceSelectionModel::new(session.clone());
+        let (available_languages, available_language_names) =
+            iter::once((None, Cow::Owned(fl!("default"))))
+                .chain(
+                    crate::i18n::languages()
+                        .map(|(identifier, name)| (Some(identifier), Cow::Owned(name))),
+                )
+                .collect::<(Vec<_>, Vec<_>)>();
+        let mut app = Self {
+            core,
+            screen: Screen::DeviceSelection(model),
+            dialog_page: None,
+            session,
+            warnings: VecDeque::with_capacity(5),
+            config: flags.config,
+            config_dir: flags.config_dir,
+            about,
+            context_drawer_screen: None,
+            available_language_names,
+            available_languages,
+            theme_names: AppTheme::VARIANTS
+                .iter()
+                .map(|theme| theme.translate())
+                .collect(),
+            key_binds: key_binds(),
+            window_width: 1040.0,
+        };
+        let command = app.update_title();
+        (
+            app,
+            cosmic::Task::batch([
+                command,
+                task.map(Message::DeviceSelectionScreen).map(Into::into),
+            ]),
+        )
+    }
+
+    fn is_drawer_open(&self) -> bool {
+        self.context_drawer_screen.is_some()
+            || matches!(&self.screen, Screen::DeviceSettings(ds) if ds.is_drawer_open())
+    }
+
+    fn dismiss_topmost_overlay(&mut self) -> bool {
+        if let Screen::DeviceSettings(ds) = &mut self.screen
+            && ds.has_dialog()
+        {
+            return ds.dismiss_dialog();
+        }
+        if self.dialog_page.is_some() {
+            self.dialog_page = None;
+            return true;
+        }
+        if self.context_drawer_screen.is_some() {
+            self.context_drawer_screen = None;
+            return true;
+        }
+        if let Screen::DeviceSettings(ds) = &mut self.screen
+            && ds.is_drawer_open()
+        {
+            return ds.dismiss_drawer();
+        }
+        false
+    }
+
     fn apply_theme(&self) -> cosmic::app::Task<Message> {
         cosmic::command::set_theme(match self.config.get().theme {
             AppTheme::System => self.core.system_theme().clone(),
@@ -652,14 +758,21 @@ impl AppModel {
     }
 
     fn view_cancel(&self, device_name: &str) -> cosmic::Element<'_, Message> {
-        widget::column![
-            widget::progress_bar::indeterminate_circular(),
-            widget::text::title2(fl!("connecting-to", name = device_name)),
-            widget::button::destructive(fl!("cancel")).on_press(Message::CancelConnectToDevice),
-        ]
-        .spacing(10)
-        .align_x(alignment::Horizontal::Center)
+        components::elevated_card(
+            widget::column![
+                widget::progress_bar::indeterminate_circular().size(44.0),
+                widget::text::title3(fl!("connecting-to", name = device_name))
+                    .wrapping(Wrapping::Word)
+                    .align_x(alignment::Horizontal::Center),
+                components::destructive_button(fl!("cancel"), Message::CancelConnectToDevice),
+            ]
+            .spacing(SPACE_MD)
+            .align_x(alignment::Horizontal::Center)
+            .width(Length::Fill),
+        )
+        .max_width(480.0)
         .apply(widget::container)
+        .padding(SPACE_LG)
         .center(Length::Fill)
         .into()
     }
@@ -727,13 +840,136 @@ fn key_binds() -> HashMap<KeyBind, KeyBindAction> {
         },
         KeyBindAction::Settings,
     );
-    key_binds.insert(
-        KeyBind {
-            modifiers: Vec::new(),
-            key: keyboard::Key::Named(keyboard::key::Named::Escape),
-        },
-        KeyBindAction::CloseDialog,
-    );
 
     key_binds
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn key_binds_contains_ctrl_comma_for_settings() {
+        let binds = key_binds();
+        let ctrl_comma = KeyBind {
+            modifiers: vec![widget::menu::key_bind::Modifier::Ctrl],
+            key: keyboard::Key::Character(",".into()),
+        };
+        assert_eq!(binds.get(&ctrl_comma), Some(&KeyBindAction::Settings));
+    }
+
+    #[tokio::test]
+    async fn overlay_dismissal_order_prioritizes_modal_over_drawer() {
+        let config_dir = tempfile::tempdir().unwrap();
+        let config = Config::new(config_dir.path().join("openscq30-gui-config.toml")).unwrap();
+        let session = Arc::new(
+            OpenSCQ30Session::new(config_dir.path().join("database.sqlite"))
+                .await
+                .unwrap(),
+        );
+        let mac = MacAddr6::nil();
+        let paired_device = PairedDevice {
+            mac_address: mac,
+            model: openscq30_lib::DeviceModel::SoundcoreA3028,
+            is_demo: true,
+        };
+        session.pair(paired_device).await.unwrap();
+        let device = session.connect(mac).await.unwrap();
+
+        let (mut app, _) = AppModel::with_session(
+            Core::default(),
+            AppFlags {
+                config,
+                config_dir: config_dir.path().to_path_buf(),
+            },
+            session.clone(),
+        );
+
+        let (mut ds, _) = device_settings::DeviceSettingsModel::new(
+            DebugOpenSCQ30Device(device),
+            session.quick_preset_handler(),
+            config_dir.path().to_path_buf(),
+        );
+        // Layer 4: DeviceSettings QuickPresets drawer
+        ds.open_quick_preset_drawer_for_test();
+        // Layer 1: DeviceSettings modal dialog
+        let _ = ds.update(device_settings::Message::ShowModifiableSelectAddDialog(
+            openscq30_lib::settings::SettingId::CustomEqualizerProfile,
+        ));
+
+        app.screen = Screen::DeviceSettings(ds);
+        // Layer 2: AppModel dialog_page
+        app.dialog_page = Some(DialogPage::RemoveDevice(paired_device));
+        // Layer 3: AppModel context_drawer_screen
+        app.context_drawer_screen = Some(ContextDrawerScreen::Settings);
+
+        assert!(app.dialog().is_some());
+        assert!(app.context_drawer().is_some());
+        assert!(app.is_drawer_open());
+
+        // Step 1: on_escape dismisses Layer 1 (DeviceSettings dialog) first
+        let _ = app.on_escape();
+        assert!(matches!(&app.screen, Screen::DeviceSettings(ds) if !ds.has_dialog()));
+        assert!(app.dialog_page.is_some());
+        assert!(app.context_drawer_screen.is_some());
+        assert!(app.is_drawer_open());
+
+        // Step 2: dismiss_topmost_overlay dismisses Layer 2 (AppModel dialog_page)
+        assert!(app.dismiss_topmost_overlay());
+        assert!(app.dialog_page.is_none());
+        assert!(app.context_drawer_screen.is_some());
+        assert!(app.is_drawer_open());
+
+        // Step 3: dismiss_topmost_overlay dismisses Layer 3 (AppModel context_drawer_screen)
+        assert!(app.dismiss_topmost_overlay());
+        assert!(app.context_drawer_screen.is_none());
+        assert!(matches!(&app.screen, Screen::DeviceSettings(ds) if ds.is_drawer_open()));
+        assert!(app.is_drawer_open());
+
+        // Step 4: dismiss_topmost_overlay dismisses Layer 4 (DeviceSettings QuickPresets drawer)
+        assert!(app.dismiss_topmost_overlay());
+        assert!(matches!(&app.screen, Screen::DeviceSettings(ds) if !ds.is_drawer_open()));
+        assert!(!app.is_drawer_open());
+
+        // Step 5: no overlays remain
+        assert!(!app.dismiss_topmost_overlay());
+    }
+
+    #[tokio::test]
+    async fn ctrl_comma_key_pressed_toggles_settings_drawer() {
+        let config_dir = tempfile::tempdir().unwrap();
+        let config = Config::new(config_dir.path().join("openscq30-gui-config.toml")).unwrap();
+        let session = Arc::new(
+            OpenSCQ30Session::new(config_dir.path().join("database.sqlite"))
+                .await
+                .unwrap(),
+        );
+        let (mut app, _) = AppModel::with_session(
+            Core::default(),
+            AppFlags {
+                config,
+                config_dir: config_dir.path().to_path_buf(),
+            },
+            session,
+        );
+
+        assert!(app.context_drawer_screen.is_none());
+        assert!(app.context_drawer().is_none());
+
+        let toggle_msg = Message::KeyPressed {
+            modifiers: keyboard::Modifiers::CTRL,
+            key: keyboard::Key::Character(",".into()),
+            physical_key: keyboard::key::Physical::Code(keyboard::key::Code::Comma),
+        };
+        let _ = app.update(toggle_msg.clone());
+        assert_eq!(
+            app.context_drawer_screen,
+            Some(ContextDrawerScreen::Settings)
+        );
+        assert!(app.context_drawer().is_some());
+
+        let _ = app.update(toggle_msg);
+        assert!(app.context_drawer_screen.is_none());
+        assert!(app.context_drawer().is_none());
+    }
 }

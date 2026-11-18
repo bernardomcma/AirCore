@@ -1,15 +1,16 @@
 use std::borrow::Cow;
 
-use cosmic::{Element, widget};
+use cosmic::Element;
 
-use crate::{device_settings::labeled_setting_row, fl};
+use crate::{components, device_settings::labeled_setting_row, fl};
 
-pub fn action<M>(name: Cow<'_, str>, on_execute: M) -> Element<'_, M>
+pub fn action<M>(name: Cow<'_, str>, on_execute: M, is_narrow: bool) -> Element<'_, M>
 where
     M: Clone + 'static,
 {
     labeled_setting_row(
         name,
-        widget::button::standard(fl!("execute")).on_press(on_execute),
+        components::secondary_button(fl!("execute"), on_execute),
+        is_narrow,
     )
 }

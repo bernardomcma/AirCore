@@ -85,6 +85,7 @@ mod tests {
 
     use crate::openscq30_v1_migration::migrate_legacy_profile;
 
+    #[allow(clippy::redundant_test_prefix)]
     #[tokio::test]
     async fn test_migrate_legacy_profile() {
         let config_dir = tempfile::tempdir().unwrap();

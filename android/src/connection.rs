@@ -3,7 +3,7 @@ use std::{collections::HashSet, panic::Location, sync::Arc};
 use async_trait::async_trait;
 use macaddr::MacAddr6;
 use openscq30_lib::{
-    ConnectionBackends,
+    ConnectionBackends, UnsupportedAapBackend,
     connection::{
         self, ConnectionStatus, RfcommBackend, RfcommConnection, RfcommServiceSelectionStrategy,
     },
@@ -29,11 +29,18 @@ impl ManualConnectionBackends {
 
 impl ConnectionBackends for ManualConnectionBackends {
     type Rfcomm = ManualRfcommConnectionBackend;
+    type Aap = UnsupportedAapBackend;
 
     async fn rfcomm(&self) -> connection::Result<Self::Rfcomm> {
         Ok(ManualRfcommConnectionBackend {
             inner: self.rfcomm.to_owned(),
         })
+    }
+
+    async fn aap(&self) -> connection::Result<Self::Aap> {
+        Ok(UnsupportedAapBackend::new(
+            "AirPods Pro 2 AAP backend is not supported on Android",
+        ))
     }
 }
 

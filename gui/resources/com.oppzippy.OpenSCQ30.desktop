@@ -2,9 +2,9 @@
 [Desktop Entry]
 Version=1.0
 Type=Application
-Name=OpenSCQ30
+Name=AirCore
 Exec=openscq30-gui
 Icon=com.oppzippy.OpenSCQ30
 Terminal=false
 Categories=Utility;Settings;
-Keywords=Soundcore;Bluetooth;Wireless;Headphones;Earbuds;Q30;
+Keywords=AirCore;AirPods;Soundcore;Bluetooth;Wireless;Headphones;Earbuds;Q30;

@@ -97,11 +97,13 @@ pub struct EqualizerPreset<
     pub volume_adjustments: VolumeAdjustments<BANDS, MIN_VOLUME, MAX_VOLUME, FRACTION_DIGITS>,
 }
 
-const COMMON_VISIBLE_BANDS: usize = 8;
-const COMMON_PRESET_BANDS: usize = 10;
-const COMMON_MIN_VOLUME: i16 = -120;
-const COMMON_MAX_VOLUME: i16 = 134;
-const COMMON_FRACTION_DIGITS: u8 = 1;
+pub const COMMON_VISIBLE_BANDS: usize = 8;
+pub const COMMON_PRESET_BANDS: usize = 10;
+pub const COMMON_MIN_VOLUME: i16 = -120;
+pub const COMMON_MAX_VOLUME: i16 = 134;
+pub const COMMON_FRACTION_DIGITS: u8 = 1;
+pub const COMMON_BAND_HZ: [u16; COMMON_VISIBLE_BANDS] =
+    [100, 200, 400, 800, 1600, 3200, 6400, 12800];
 
 pub fn common_settings() -> EqualizerModuleSettings<
     COMMON_VISIBLE_BANDS,
@@ -420,12 +422,104 @@ pub fn common_settings_with_presets<const PRESET_BANDS: usize, const FRACTION_DI
 > {
     EqualizerModuleSettings {
         custom_preset_id: Some(0xfefe),
-        band_hz: [100, 200, 400, 800, 1600, 3200, 6400, 12800],
+        band_hz: COMMON_BAND_HZ,
         invisible_bands_mode: InvisibleBandsMode::Fixed(vec![0, 0]),
         preset_min_volume: -60,
         preset_max_volume: 60,
         presets,
     }
+}
+
+pub fn common_genre_presets() -> Vec<
+    EqualizerPreset<
+        COMMON_PRESET_BANDS,
+        COMMON_MIN_VOLUME,
+        COMMON_MAX_VOLUME,
+        COMMON_FRACTION_DIGITS,
+    >,
+> {
+    vec![
+        EqualizerPreset {
+            name: "Trap",
+            localized_name: || fl!("trap"),
+            id: 0xfefe,
+            volume_adjustments: VolumeAdjustments::new([55, 30, -25, -20, 0, 15, 35, 45, 0, -120]),
+        },
+        EqualizerPreset {
+            name: "Techno",
+            localized_name: || fl!("techno"),
+            id: 0xfefe,
+            volume_adjustments: VolumeAdjustments::new([40, 25, -15, 0, 15, 20, 30, 25, 0, -120]),
+        },
+        EqualizerPreset {
+            name: "HardTechno",
+            localized_name: || fl!("hard-techno"),
+            id: 0xfefe,
+            volume_adjustments: VolumeAdjustments::new([60, 40, -30, -10, 25, 35, 45, 35, 0, -120]),
+        },
+        EqualizerPreset {
+            name: "House",
+            localized_name: || fl!("house"),
+            id: 0xfefe,
+            volume_adjustments: VolumeAdjustments::new([35, 30, -10, 10, 15, 10, 25, 30, 0, -120]),
+        },
+        EqualizerPreset {
+            name: "DrumAndBass",
+            localized_name: || fl!("drum-and-bass"),
+            id: 0xfefe,
+            volume_adjustments: VolumeAdjustments::new([50, 20, -20, -10, 10, 30, 40, 40, 0, -120]),
+        },
+        EqualizerPreset {
+            name: "Dubstep",
+            localized_name: || fl!("dubstep"),
+            id: 0xfefe,
+            volume_adjustments: VolumeAdjustments::new([60, 35, -30, 15, 30, 25, 35, 20, 0, -120]),
+        },
+        EqualizerPreset {
+            name: "Metal",
+            localized_name: || fl!("metal"),
+            id: 0xfefe,
+            volume_adjustments: VolumeAdjustments::new([35, 15, -30, -25, 15, 40, 45, 25, 0, -120]),
+        },
+        EqualizerPreset {
+            name: "LoFi",
+            localized_name: || fl!("lo-fi"),
+            id: 0xfefe,
+            volume_adjustments: VolumeAdjustments::new([
+                20, 30, 20, 10, -10, -25, -40, -50, 0, -120,
+            ]),
+        },
+        EqualizerPreset {
+            name: "Indie",
+            localized_name: || fl!("indie"),
+            id: 0xfefe,
+            volume_adjustments: VolumeAdjustments::new([10, 15, -10, 15, 25, 25, 20, 15, 0, -120]),
+        },
+        EqualizerPreset {
+            name: "Reggae",
+            localized_name: || fl!("reggae"),
+            id: 0xfefe,
+            volume_adjustments: VolumeAdjustments::new([50, 40, 10, -15, -10, 20, 25, 10, 0, -120]),
+        },
+        EqualizerPreset {
+            name: "Ambient",
+            localized_name: || fl!("ambient"),
+            id: 0xfefe,
+            volume_adjustments: VolumeAdjustments::new([25, 15, -15, -10, 5, 15, 30, 40, 0, -120]),
+        },
+        EqualizerPreset {
+            name: "Funk",
+            localized_name: || fl!("funk"),
+            id: 0xfefe,
+            volume_adjustments: VolumeAdjustments::new([30, 35, -15, 0, 20, 30, 30, 20, 0, -120]),
+        },
+        EqualizerPreset {
+            name: "Country",
+            localized_name: || fl!("country"),
+            id: 0xfefe,
+            volume_adjustments: VolumeAdjustments::new([15, 20, 0, 20, 30, 25, 20, 10, 0, -120]),
+        },
+    ]
 }
 
 impl<T: 'static> ModuleCollection<T> {
@@ -826,5 +920,362 @@ impl<T: 'static> ModuleCollection<T> {
             ImportExportSettingHandler::new(profile_store, change_notify),
         );
         self.state_modifiers.push(state_modifier);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashSet;
+
+    use macaddr::MacAddr6;
+
+    use crate::{
+        api::settings::{Setting, SettingId},
+        devices::soundcore::{a3876, a3952, d1101},
+    };
+
+    use super::*;
+
+    const EXPECTED_COMMON_PRESETS: [(&str, u16, &str, [i16; 10]); 22] = [
+        (
+            "SoundcoreSignature",
+            0x0000,
+            "Soundcore Signature",
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, -120],
+        ),
+        (
+            "Acoustic",
+            0x0001,
+            "Acoustic",
+            [40, 10, 20, 20, 40, 40, 40, 20, 0, -120],
+        ),
+        (
+            "BassBooster",
+            0x0002,
+            "Bass Booster",
+            [40, 30, 10, 0, 0, 0, 0, 0, 0, -120],
+        ),
+        (
+            "BassReducer",
+            0x0003,
+            "Bass Reducer",
+            [-40, -30, -10, 0, 0, 0, 0, 0, 0, -120],
+        ),
+        (
+            "Classical",
+            0x0004,
+            "Classical",
+            [30, 30, -20, -20, 0, 20, 30, 40, 0, -120],
+        ),
+        (
+            "Podcast",
+            0x0005,
+            "Podcast",
+            [-30, 20, 40, 40, 30, 20, 0, -20, 0, -120],
+        ),
+        (
+            "Dance",
+            0x0006,
+            "Dance",
+            [20, -30, -10, 10, 20, 20, 10, -30, 0, -120],
+        ),
+        (
+            "Deep",
+            0x0007,
+            "Deep",
+            [20, 10, 30, 30, 20, -20, -40, -50, 0, -120],
+        ),
+        (
+            "Electronic",
+            0x0008,
+            "Electronic",
+            [30, 20, -20, 20, 10, 20, 30, 30, 0, -120],
+        ),
+        (
+            "Flat",
+            0x0009,
+            "Flat",
+            [-20, -20, -10, 0, 0, 0, -20, -20, 0, -120],
+        ),
+        (
+            "HipHop",
+            0x000a,
+            "Hip Hop",
+            [20, 30, -10, -10, 20, -10, 20, 30, 0, -120],
+        ),
+        (
+            "Jazz",
+            0x000b,
+            "Jazz",
+            [20, 20, -20, -20, 0, 20, 30, 40, 0, -120],
+        ),
+        (
+            "Latin",
+            0x000c,
+            "Latin",
+            [0, 0, -20, -20, -20, 0, 30, 50, 0, -120],
+        ),
+        (
+            "Lounge",
+            0x000d,
+            "Lounge",
+            [-10, 20, 40, 30, 0, -20, 20, 10, 0, -120],
+        ),
+        (
+            "Piano",
+            0x000e,
+            "Piano",
+            [0, 30, 30, 20, 40, 50, 30, 40, 0, -120],
+        ),
+        (
+            "Pop",
+            0x000f,
+            "Pop",
+            [-10, 10, 30, 30, 10, -10, -20, -30, 0, -120],
+        ),
+        (
+            "RnB",
+            0x0010,
+            "RnB",
+            [60, 20, -20, -20, 20, 30, 30, 40, 0, -120],
+        ),
+        (
+            "Rock",
+            0x0011,
+            "Rock",
+            [30, 20, -10, -10, 10, 30, 30, 30, 0, -120],
+        ),
+        (
+            "SmallSpeakers",
+            0x0012,
+            "Small Speakers",
+            [40, 30, 10, 0, -20, -30, -40, -40, 0, -120],
+        ),
+        (
+            "SpokenWord",
+            0x0013,
+            "Spoken Word",
+            [-30, -20, 10, 20, 20, 10, 0, -30, 0, -120],
+        ),
+        (
+            "TrebleBooster",
+            0x0014,
+            "Treble Booster",
+            [-20, -20, -20, -10, 10, 20, 20, 40, 0, -120],
+        ),
+        (
+            "TrebleReducer",
+            0x0015,
+            "Treble Reducer",
+            [0, 0, 0, -20, -30, -40, -40, -60, 0, -120],
+        ),
+    ];
+
+    #[test]
+    fn f2_common_settings_presets_intact() {
+        let settings = common_settings();
+        assert_eq!(settings.presets.len(), 22);
+        for (actual, (name, id, localized, adjustments)) in
+            settings.presets.iter().zip(EXPECTED_COMMON_PRESETS)
+        {
+            assert_eq!(actual.name, name);
+            assert_eq!(actual.id, id);
+            assert_eq!((actual.localized_name)(), localized);
+            assert_eq!(actual.volume_adjustments.adjustments(), &adjustments);
+        }
+    }
+
+    #[test]
+    fn f2_common_settings_type_2_presets_intact() {
+        let settings = common_settings_type_2();
+        assert_eq!(settings.presets.len(), 22);
+        for (actual, (name, id, localized, mut adjustments)) in
+            settings.presets.iter().zip(EXPECTED_COMMON_PRESETS)
+        {
+            if name == "Rock" {
+                adjustments = [30, 20, -10, -10, 10, 30, 40, 50, 0, -120];
+            }
+            assert_eq!(actual.name, name);
+            assert_eq!(actual.id, id);
+            assert_eq!((actual.localized_name)(), localized);
+            assert_eq!(actual.volume_adjustments.adjustments(), &adjustments);
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn f2_per_device_presets_intact() {
+        let a3876_settings = a3876::equalizer_settings();
+        assert_eq!(a3876_settings.presets.len(), 22);
+        assert_eq!(a3876_settings.presets[1].name, "Balanced");
+        assert_eq!(a3876_settings.presets[21].name, "VolumeBooster");
+        assert_eq!(a3876_settings.presets[21].id, 30);
+
+        let a3952_settings = a3952::equalizer_settings();
+        assert_eq!(a3952_settings.presets.len(), 22);
+        assert_eq!(
+            a3952_settings.presets[1].volume_adjustments.adjustments(),
+            &[30, -10, 0, 0, 20, 10, 10, -10, 0, -120]
+        );
+
+        let d1101_settings = d1101::equalizer_settings();
+        assert_eq!(d1101_settings.presets.len(), 6);
+
+        let database = Arc::new(OpenSCQ30Database::new_in_memory().await.unwrap());
+        let expected_demo_counts = [
+            (DeviceModel::SoundcoreA3005, 22 + 13),
+            (DeviceModel::SoundcoreA3035, 22 + 13),
+            (DeviceModel::SoundcoreA3040, 21 + 13),
+            (DeviceModel::SoundcoreA3062, 22 + 13),
+            (DeviceModel::SoundcoreD1402, 22 + 13),
+            (DeviceModel::SoundcoreA3330, 1 + 13),
+            (DeviceModel::SoundcoreD1101, 6 + 13),
+            (DeviceModel::SoundcoreA3876, 22 + 13),
+            (DeviceModel::SoundcoreA3952, 22 + 13),
+            (DeviceModel::SoundcoreA3116, 6),
+            (DeviceModel::SoundcoreA3909, 22),
+            (DeviceModel::SoundcoreA3944, 22),
+            (DeviceModel::SoundcoreA3949, 22),
+        ];
+        for (model, expected_len) in expected_demo_counts {
+            let registry = model.demo_device_registry(database.clone()).await.unwrap();
+            let device = registry.connect(MacAddr6::nil()).await.unwrap();
+            let Some(Setting::PresetEqualizerProfileSelect { select, .. }) =
+                device.setting(&SettingId::PresetEqualizerProfile)
+            else {
+                panic!("{model} missing PresetEqualizerProfileSelect");
+            };
+            assert_eq!(
+                select.options.len(),
+                expected_len,
+                "{model} unexpected preset count"
+            );
+        }
+    }
+
+    #[test]
+    fn f3_genre_presets_invariants() {
+        let genre_presets = common_genre_presets();
+        assert_eq!(genre_presets.len(), 13);
+
+        let required = ["Trap", "Techno", "HardTechno"];
+        for req in required {
+            assert!(
+                genre_presets.iter().any(|p| p.name == req),
+                "missing required genre preset {req}"
+            );
+        }
+
+        let mut seen_names = HashSet::new();
+        let mut seen_lower_names = HashSet::new();
+        let mut seen_visible_curves = HashSet::new();
+
+        for base in [common_settings(), common_settings_type_2()] {
+            assert_eq!(base.band_hz, COMMON_BAND_HZ);
+            assert_eq!(base.preset_min_volume, -60);
+            assert_eq!(base.preset_max_volume, 60);
+            assert_eq!(base.custom_preset_id, Some(0xfefe));
+
+            for preset in &base.presets {
+                seen_visible_curves.insert(preset.volume_adjustments.adjustments()[..8].to_vec());
+            }
+            // Also reserve [0; 8] and [1; 8]
+            seen_visible_curves.insert(vec![0; 8]);
+            seen_visible_curves.insert(vec![1; 8]);
+            // Also reserve a3028 test curve
+            seen_visible_curves.insert(vec![-60, 60, 23, 40, 22, 60, -4, 16]);
+
+            for preset in &base.presets {
+                assert!(seen_names.insert(preset.name));
+                assert!(seen_lower_names.insert(preset.name.to_ascii_lowercase()));
+            }
+            seen_names.clear();
+            seen_lower_names.clear();
+        }
+
+        for base_preset in common_settings().presets {
+            seen_names.insert(base_preset.name);
+            seen_lower_names.insert(base_preset.name.to_ascii_lowercase());
+        }
+        assert!(seen_names.contains("HipHop"));
+        assert!(seen_names.contains("Rock"));
+
+        for preset in &genre_presets {
+            assert_eq!(preset.id, 0xfefe);
+            assert!(
+                seen_names.insert(preset.name),
+                "duplicate name {}",
+                preset.name
+            );
+            assert!(
+                seen_lower_names.insert(preset.name.to_ascii_lowercase()),
+                "case-insensitive duplicate name {}",
+                preset.name
+            );
+            let localized = (preset.localized_name)();
+            assert!(!localized.is_empty(), "empty label for {}", preset.name);
+            let adj = preset.volume_adjustments.adjustments();
+            assert_eq!(&adj[8..10], &[0, -120]);
+            for &band in &adj[..8] {
+                assert!(
+                    (-60..=60).contains(&band),
+                    "band {band} out of -60..=60 for {}",
+                    preset.name
+                );
+            }
+            assert!(
+                seen_visible_curves.insert(adj[..8].to_vec()),
+                "duplicate or flat curve for {}",
+                preset.name
+            );
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn f3_genre_presets_excluded_when_custom_preset_id_is_none() {
+        let database = Arc::new(OpenSCQ30Database::new_in_memory().await.unwrap());
+        for model in [DeviceModel::SoundcoreA3944, DeviceModel::SoundcoreA3949] {
+            let registry = model.demo_device_registry(database.clone()).await.unwrap();
+            let device = registry.connect(MacAddr6::nil()).await.unwrap();
+            let Some(Setting::PresetEqualizerProfileSelect { select, .. }) =
+                device.setting(&SettingId::PresetEqualizerProfile)
+            else {
+                panic!("{model} missing PresetEqualizerProfileSelect");
+            };
+            assert_eq!(select.options.len(), 22);
+            for genre in common_genre_presets() {
+                assert!(!select.options.contains(&genre.name.into()));
+            }
+            assert!(device.setting(&SettingId::CustomEqualizerProfile).is_none());
+            let Some(Setting::Equalizer { read_only, .. }) =
+                device.setting(&SettingId::VolumeAdjustments)
+            else {
+                panic!("{model} missing VolumeAdjustments");
+            };
+            assert!(read_only);
+        }
+
+        let q30_registry = DeviceModel::SoundcoreA3028
+            .demo_device_registry(database)
+            .await
+            .unwrap();
+        let q30 = q30_registry.connect(MacAddr6::nil()).await.unwrap();
+        let Some(Setting::PresetEqualizerProfileSelect {
+            equalizer, select, ..
+        }) = q30.setting(&SettingId::PresetEqualizerProfile)
+        else {
+            panic!("SoundcoreA3028 missing PresetEqualizerProfileSelect");
+        };
+        assert_eq!(
+            equalizer.band_hz.as_ref(),
+            &[100, 200, 400, 800, 1600, 3200, 6400, 12800]
+        );
+        assert_eq!(equalizer.min, -60);
+        assert_eq!(equalizer.max, 60);
+        for expected in ["Trap", "Techno", "HardTechno", "HipHop", "Rock"] {
+            assert!(
+                select.options.contains(&expected.into()),
+                "SoundcoreA3028 missing {expected}"
+            );
+        }
     }
 }

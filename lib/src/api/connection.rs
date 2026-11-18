@@ -31,6 +31,18 @@ pub enum Error {
 
     #[error("{action} timed out")]
     TimedOut { action: &'static str },
+    #[error("aap service unavailable: {reason}")]
+    ServiceUnavailable {
+        reason: String,
+        source: Option<Box<dyn std::error::Error + Send + Sync>>,
+        location: &'static Location<'static>,
+    },
+    #[error("aap transport error ({code}): {message}")]
+    TransportError {
+        code: i32,
+        message: String,
+        location: &'static Location<'static>,
+    },
 }
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -69,6 +81,34 @@ pub trait RfcommConnection {
 
     /// Returns a `tokio::sync::watch::Receiver` for tracking when the connection disconnects.
     fn connection_status(&self) -> watch::Receiver<ConnectionStatus>;
+}
+
+#[async_trait]
+pub trait AapBackend {
+    /// Lists paired/connected Apple AirPods devices supporting AAP.
+    async fn devices(&self) -> Result<HashSet<ConnectionDescriptor>>;
+
+    /// Opens a bidirectional AAP packet transport to `mac_address`.
+    /// Implementations must be cancel-safe.
+    async fn connect(&self, mac_address: MacAddr6) -> Result<Arc<dyn AapConnection + Send + Sync>>;
+}
+
+#[async_trait]
+pub trait AapConnection {
+    /// Sends a single raw AAP packet (max 1691 bytes over WPods L2CAP).
+    async fn write(&self, data: &[u8]) -> Result<()>;
+
+    /// Returns a channel receiving inbound raw AAP packets.
+    /// May only be called once per connection.
+    fn read_channel(&self) -> mpsc::Receiver<Vec<u8>>;
+
+    /// Tracks transport connection status (`Connected` -> `Disconnected`).
+    fn connection_status(&self) -> watch::Receiver<ConnectionStatus>;
+
+    /// Optional HFP call-audio-active flag (`WPods.Aap` `0x03` notifications).
+    fn call_audio_active(&self) -> Option<watch::Receiver<bool>> {
+        None
+    }
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -130,6 +170,64 @@ pub mod test_stub {
 
         fn connection_status(&self) -> watch::Receiver<ConnectionStatus> {
             self.connection_status.subscribe()
+        }
+    }
+
+    pub struct StubAapConnection {
+        connection_status: watch::Sender<ConnectionStatus>,
+        call_audio_active: watch::Sender<bool>,
+        inbound_receiver: Mutex<Option<mpsc::Receiver<Vec<u8>>>>,
+        outbound_sender: mpsc::Sender<Vec<u8>>,
+    }
+
+    impl StubAapConnection {
+        pub fn new() -> (
+            Self,
+            mpsc::Sender<Vec<u8>>,
+            mpsc::Receiver<Vec<u8>>,
+            watch::Sender<ConnectionStatus>,
+            watch::Sender<bool>,
+        ) {
+            let (inbound_sender, inbound_receiver) = mpsc::channel(100);
+            let (outbound_sender, outbound_receiver) = mpsc::channel(100);
+            let (connection_status, _) = watch::channel(ConnectionStatus::Connected);
+            let (call_audio_active, _) = watch::channel(false);
+            (
+                Self {
+                    connection_status: connection_status.clone(),
+                    call_audio_active: call_audio_active.clone(),
+                    inbound_receiver: Mutex::new(Some(inbound_receiver)),
+                    outbound_sender,
+                },
+                inbound_sender,
+                outbound_receiver,
+                connection_status,
+                call_audio_active,
+            )
+        }
+    }
+
+    #[async_trait]
+    impl AapConnection for StubAapConnection {
+        async fn write(&self, data: &[u8]) -> Result<()> {
+            self.outbound_sender.send(data.to_owned()).await.unwrap();
+            Ok(())
+        }
+
+        fn read_channel(&self) -> mpsc::Receiver<Vec<u8>> {
+            self.inbound_receiver
+                .lock()
+                .unwrap()
+                .take()
+                .expect("StubAapConnection::read_channel should only be called once")
+        }
+
+        fn connection_status(&self) -> watch::Receiver<ConnectionStatus> {
+            self.connection_status.subscribe()
+        }
+
+        fn call_audio_active(&self) -> Option<watch::Receiver<bool>> {
+            Some(self.call_audio_active.subscribe())
         }
     }
 }

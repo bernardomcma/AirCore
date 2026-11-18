@@ -46,6 +46,7 @@ pub enum CategoryId {
     Case,
     Lights,
     Alarms,
+    HearingAssistance,
 }
 
 #[derive(
@@ -266,6 +267,27 @@ pub enum SettingId {
     #[translate("alarm-n-snooze-duration-minutes", number = 5)]
     Alarm5SnoozeDuration,
     HeyAnkaWakeWord,
+    AllowOffListeningMode,
+    OneBudAnc,
+    AdaptiveAudioStrength,
+    EarDetection,
+    LeftEarStatus,
+    RightEarStatus,
+    MicSide,
+    ConversationAwareness,
+    ConversationAwarenessSpeaking,
+    PersonalizedVolume,
+    ToneVolume,
+    StemCycleModes,
+    PressSpeed,
+    HoldDuration,
+    HearingAid,
+    MediaAssistCalls,
+    MediaAssistMedia,
+    IsChargingCase,
+    DeviceName,
+    ModelNumber,
+    Manufacturer,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

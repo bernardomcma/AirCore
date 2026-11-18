@@ -52,7 +52,7 @@ tokio = { workspace = true, features = ["rt-multi-thread"] }
 [target.'cfg(target_os = "windows")'.dependencies]
 rusqlite = { workspace = true, features = ["bundled"] }
 hex = { workspace = true }
-tokio = { workspace = true, features = ["rt-multi-thread"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "net"] }
 windows = { workspace = true, features = [
     "Storage_Streams",
     "Foundation",
@@ -62,6 +62,12 @@ windows = { workspace = true, features = [
     "Devices_Bluetooth_GenericAttributeProfile",
     "Devices_Bluetooth_Rfcomm",
     "Networking_Sockets",
+    "Win32_Foundation",
+    "Win32_Devices_Bluetooth",
+    "Win32_Devices_DeviceAndDriverInstallation",
+    "Win32_Devices_Properties",
+    "Win32_System_Pipes",
+    "Win32_System_Services",
 ] }
 
 [target.'cfg(target_os = "android")'.dependencies]

@@ -1,5 +1,5 @@
 language-name = עברית
-openscq30 = OpenSCQ30
+openscq30 = AirCore
 device-selection = בחירת מכשיר
 select-device = בחר מכשיר
 connecting-to = מתחבר אל { $name }

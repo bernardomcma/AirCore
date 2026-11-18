@@ -52,7 +52,7 @@ soundcore_device!(
 
 #[cfg(test)]
 mod tests {
-    use std::{borrow::Cow, sync::Arc, time::Duration};
+    use std::{borrow::Cow, collections::HashMap, sync::Arc, time::Duration};
 
     use macaddr::MacAddr6;
     use tokio::sync::mpsc;
@@ -60,14 +60,18 @@ mod tests {
     use crate::{
         api::{
             device::OpenSCQ30DeviceRegistry,
-            settings::{SettingId, Value},
+            settings::{Setting, SettingId, Value},
         },
         connection_backend::mock::rfcomm::MockRfcommBackend,
         devices::{
             DeviceModel,
             soundcore::common::{
-                packet,
-                structures::{AmbientSoundMode, NoiseCancelingMode},
+                device::{SoundcoreDeviceConfig, test_utils::TestSoundcoreDevice},
+                packet::{self, outbound::ToPacket},
+                structures::{
+                    AmbientSoundMode, CommonEqualizerConfiguration, CommonVolumeAdjustments,
+                    NoiseCancelingMode,
+                },
             },
         },
         storage::OpenSCQ30Database,
@@ -299,5 +303,108 @@ mod tests {
             .await
             .unwrap();
         f.await.unwrap();
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn test_a3028_genre_preset_outbound_packet_and_readback() {
+        let state_update_packet = packet::Inbound::new(
+            packet::inbound::STATE_COMMAND,
+            super::A3028StateUpdatePacket::default().to_packet().body,
+        );
+        let mut device = TestSoundcoreDevice::new(
+            super::device_registry,
+            DeviceModel::SoundcoreA3028,
+            HashMap::from([(packet::inbound::STATE_COMMAND, state_update_packet)]),
+            SoundcoreDeviceConfig::default(),
+        )
+        .await;
+
+        let cases = [
+            ("Trap", [55, 30, -25, -20, 0, 15, 35, 45]),
+            ("Techno", [40, 25, -15, 0, 15, 20, 30, 25]),
+            ("HardTechno", [60, 40, -30, -10, 25, 35, 45, 35]),
+        ];
+
+        for (preset_name, expected_8_bands) in cases {
+            device
+                .assert_set_settings_response(
+                    vec![(
+                        SettingId::PresetEqualizerProfile,
+                        Value::OptionalString(Some(preset_name.into())),
+                    )],
+                    vec![packet::outbound::set_equalizer(
+                        &CommonEqualizerConfiguration::<1, 8>::new_all_bands_present(
+                            0xfefe,
+                            [CommonVolumeAdjustments::new(expected_8_bands)],
+                        ),
+                    )],
+                )
+                .await;
+            device.assert_setting_values([
+                (
+                    SettingId::PresetEqualizerProfile,
+                    Value::OptionalString(Some(preset_name.into())),
+                ),
+                (
+                    SettingId::VolumeAdjustments,
+                    expected_8_bands.to_vec().into(),
+                ),
+            ]);
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn test_a3028_demo_genre_preset_roundtrip() {
+        let database = Arc::new(OpenSCQ30Database::new_in_memory().await.unwrap());
+        let registry = DeviceModel::SoundcoreA3028
+            .demo_device_registry(database)
+            .await
+            .unwrap();
+        let device = registry.connect(MacAddr6::nil()).await.unwrap();
+
+        let Some(Setting::PresetEqualizerProfileSelect {
+            select, presets, ..
+        }) = device.setting(&SettingId::PresetEqualizerProfile)
+        else {
+            panic!("SoundcoreA3028 missing PresetEqualizerProfileSelect");
+        };
+
+        for (option, expected_curve) in select.options.iter().zip(presets.iter()) {
+            device
+                .set_setting_values(vec![(
+                    SettingId::PresetEqualizerProfile,
+                    Value::OptionalString(Some(option.clone())),
+                )])
+                .await
+                .unwrap();
+            assert_eq!(
+                Value::from(device.setting(&SettingId::PresetEqualizerProfile).unwrap()),
+                Value::OptionalString(Some(option.clone()))
+            );
+            assert_eq!(
+                Value::from(device.setting(&SettingId::VolumeAdjustments).unwrap()),
+                Value::I16Vec(expected_curve.clone())
+            );
+        }
+
+        // Select a hardware preset, then clear PresetEqualizerProfile to None
+        device
+            .set_setting_values(vec![(
+                SettingId::PresetEqualizerProfile,
+                Value::OptionalString(Some("SoundcoreSignature".into())),
+            )])
+            .await
+            .unwrap();
+        device
+            .set_setting_values(vec![(
+                SettingId::PresetEqualizerProfile,
+                Value::OptionalString(None),
+            )])
+            .await
+            .unwrap();
+        assert_eq!(
+            Value::from(device.setting(&SettingId::PresetEqualizerProfile).unwrap()),
+            Value::OptionalString(None)
+        );
     }
 }

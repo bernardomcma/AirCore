@@ -6,6 +6,7 @@ use tracing_subscriber::EnvFilter;
 
 mod add_device;
 mod app;
+mod components;
 mod config;
 mod device_selection;
 mod device_settings;
@@ -13,6 +14,7 @@ pub mod equalizer_line;
 mod i18n;
 pub mod icons;
 mod openscq30_v1_migration;
+mod theme;
 mod throttle;
 mod utils;
 mod warning;
@@ -66,7 +68,13 @@ fn main() -> anyhow::Result<()> {
         config::AppTheme::System => cosmic::app::Settings::default(),
         config::AppTheme::Light => cosmic::app::Settings::default().theme(cosmic::Theme::light()),
         config::AppTheme::Dark => cosmic::app::Settings::default().theme(cosmic::Theme::dark()),
-    };
+    }
+    .size(cosmic::iced::Size::new(1040.0, 740.0))
+    .size_limits(
+        cosmic::iced::Limits::NONE
+            .min_width(380.0)
+            .min_height(480.0),
+    );
     cosmic::app::run::<app::AppModel>(cosmic_settings, app::AppFlags { config, config_dir })?;
 
     Ok(())

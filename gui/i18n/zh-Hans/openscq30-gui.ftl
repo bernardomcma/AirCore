@@ -1,5 +1,5 @@
 language-name = 中文
-openscq30 = OpenSCQ30
+openscq30 = AirCore
 device-selection = 设备选择
 select-device = 选择设备
 connect = 连接

@@ -1,3 +1,4 @@
+mod apple;
 mod soundcore;
 
 mod device_model;

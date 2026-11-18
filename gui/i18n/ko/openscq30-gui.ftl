@@ -1,5 +1,5 @@
 language-name = 한국어
-openscq30 = OpenSCQ30
+openscq30 = AirCore
 device-selection = 기기 선택
 select-device = 기기 선택
 connect = 연결

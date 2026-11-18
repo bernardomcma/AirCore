@@ -111,6 +111,7 @@ pub fn delete(connection: &Connection, mac_address: MacAddr6) -> Result<(), Erro
         "DELETE FROM paired_device WHERE mac_address = ?1",
         (SqliteMacAddr6(mac_address),),
     )?;
+    super::device_settings::delete_for_device(connection, mac_address)?;
     Ok(())
 }
 

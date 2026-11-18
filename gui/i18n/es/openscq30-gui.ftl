@@ -1,5 +1,5 @@
 language-name = Español
-openscq30 = OpenSCQ30
+openscq30 = AirCore
 device-selection = Selección de dispositivo
 select-device = Seleccionar dispositivo
 connect = Conectar

@@ -6,6 +6,7 @@ use tempfile::tempdir;
 fn cli(dir: &Path) -> Command {
     let mut cmd = Command::new(get_cargo_bin("openscq30"));
     cmd.env("XDG_CONFIG_HOME", dir.to_str().unwrap());
+    cmd.env("OPENSCQ30_DATABASE_PATH", dir.join("database.sqlite"));
     cmd
 }
 
@@ -49,7 +50,7 @@ fn list_settings() {
     ambientSoundMode: select (["Normal", "Transparency", "NoiseCanceling"])
     noiseCancelingMode: select (["Transport", "Indoor", "Outdoor"])
     -- equalizer --
-    presetEqualizerProfile: optional select (["SoundcoreSignature", "Acoustic", "BassBooster", "BassReducer", "Classical", "Podcast", "Dance", "Deep", "Electronic", "Flat", "HipHop", "Jazz", "Latin", "Lounge", "Piano", "Pop", "RnB", "Rock", "SmallSpeakers", "SpokenWord", "TrebleBooster", "TrebleReducer"])
+    presetEqualizerProfile: optional select (["SoundcoreSignature", "Acoustic", "BassBooster", "BassReducer", "Classical", "Podcast", "Dance", "Deep", "Electronic", "Flat", "HipHop", "Jazz", "Latin", "Lounge", "Piano", "Pop", "RnB", "Rock", "SmallSpeakers", "SpokenWord", "TrebleBooster", "TrebleReducer", "Trap", "Techno", "HardTechno", "House", "DrumAndBass", "Dubstep", "Metal", "LoFi", "Indie", "Reggae", "Ambient", "Funk", "Country"])
     customEqualizerProfile: modifiable select ([])
     volumeAdjustments: equalizer (bands: [100, 200, 400, 800, 1600, 3200, 6400, 12800], min: -120, max: 134, fractional digits: 1)
     -- equalizerImportExport --
@@ -78,7 +79,7 @@ fn list_settings_no_categories() {
     ----- stdout -----
     ambientSoundMode: select (["Normal", "Transparency", "NoiseCanceling"])
     noiseCancelingMode: select (["Transport", "Indoor", "Outdoor"])
-    presetEqualizerProfile: optional select (["SoundcoreSignature", "Acoustic", "BassBooster", "BassReducer", "Classical", "Podcast", "Dance", "Deep", "Electronic", "Flat", "HipHop", "Jazz", "Latin", "Lounge", "Piano", "Pop", "RnB", "Rock", "SmallSpeakers", "SpokenWord", "TrebleBooster", "TrebleReducer"])
+    presetEqualizerProfile: optional select (["SoundcoreSignature", "Acoustic", "BassBooster", "BassReducer", "Classical", "Podcast", "Dance", "Deep", "Electronic", "Flat", "HipHop", "Jazz", "Latin", "Lounge", "Piano", "Pop", "RnB", "Rock", "SmallSpeakers", "SpokenWord", "TrebleBooster", "TrebleReducer", "Trap", "Techno", "HardTechno", "House", "DrumAndBass", "Dubstep", "Metal", "LoFi", "Indie", "Reggae", "Ambient", "Funk", "Country"])
     customEqualizerProfile: modifiable select ([])
     volumeAdjustments: equalizer (bands: [100, 200, 400, 800, 1600, 3200, 6400, 12800], min: -120, max: 134, fractional digits: 1)
     importCustomEqualizerProfiles: import string
@@ -225,7 +226,20 @@ fn list_settings_json() {
                 "SmallSpeakers",
                 "SpokenWord",
                 "TrebleBooster",
-                "TrebleReducer"
+                "TrebleReducer",
+                "Trap",
+                "Techno",
+                "HardTechno",
+                "House",
+                "DrumAndBass",
+                "Dubstep",
+                "Metal",
+                "LoFi",
+                "Indie",
+                "Reggae",
+                "Ambient",
+                "Funk",
+                "Country"
               ],
               "localizedOptions": [
                 "Soundcore Signature",
@@ -249,7 +263,20 @@ fn list_settings_json() {
                 "Small Speakers",
                 "Spoken Word",
                 "Treble Booster",
-                "Treble Reducer"
+                "Treble Reducer",
+                "Trap",
+                "Techno",
+                "Hard Techno",
+                "House",
+                "Drum & Bass",
+                "Dubstep",
+                "Metal",
+                "Lo-Fi",
+                "Indie",
+                "Reggae",
+                "Ambient",
+                "Funk",
+                "Country"
               ]
             }
           },
@@ -403,7 +430,20 @@ fn list_settings_json_no_categories() {
             "SmallSpeakers",
             "SpokenWord",
             "TrebleBooster",
-            "TrebleReducer"
+            "TrebleReducer",
+            "Trap",
+            "Techno",
+            "HardTechno",
+            "House",
+            "DrumAndBass",
+            "Dubstep",
+            "Metal",
+            "LoFi",
+            "Indie",
+            "Reggae",
+            "Ambient",
+            "Funk",
+            "Country"
           ],
           "localizedOptions": [
             "Soundcore Signature",
@@ -427,7 +467,20 @@ fn list_settings_json_no_categories() {
             "Small Speakers",
             "Spoken Word",
             "Treble Booster",
-            "Treble Reducer"
+            "Treble Reducer",
+            "Trap",
+            "Techno",
+            "Hard Techno",
+            "House",
+            "Drum & Bass",
+            "Dubstep",
+            "Metal",
+            "Lo-Fi",
+            "Indie",
+            "Reggae",
+            "Ambient",
+            "Funk",
+            "Country"
           ]
         }
       },
@@ -1376,4 +1429,111 @@ fn time_json() {
 
     ----- stderr -----
     "#);
+}
+
+#[test]
+fn setting_preset_equalizer_profile_a3028_genre_presets() {
+    let dir = tempdir().unwrap();
+    add_device(dir.path(), "SoundcoreA3028");
+
+    let cases = [
+        ("Trap", "[55, 30, -25, -20, 0, 15, 35, 45]"),
+        ("Techno", "[40, 25, -15, 0, 15, 20, 30, 25]"),
+        ("HardTechno", "[60, 40, -30, -10, 25, 35, 45, 35]"),
+        ("HipHop", "[20, 30, -10, -10, 20, -10, 20, 30]"),
+        ("Rock", "[30, 20, -10, -10, 10, 30, 30, 30]"),
+    ];
+
+    for (preset, expected_eq) in cases {
+        let mut command = cli(dir.path());
+        command
+            .arg("device")
+            .arg("--mac-address")
+            .arg("00:00:00:00:00:00")
+            .arg("setting")
+            .arg("--set")
+            .arg(format!("presetEqualizerProfile={preset}"))
+            .arg("--get")
+            .arg("presetEqualizerProfile")
+            .arg("--get")
+            .arg("volumeAdjustments");
+        let output = command.output().unwrap();
+        assert!(output.status.success(), "{preset} failed: {output:?}");
+        let stdout = str::from_utf8(&output.stdout).unwrap();
+        assert!(stdout.contains(preset), "{preset} missing in:\n{stdout}");
+        assert!(
+            stdout.contains(expected_eq),
+            "{preset} curve {expected_eq} missing in:\n{stdout}"
+        );
+    }
+
+    assert_cmd_snapshot!(set_and_get(dir.path(), "presetEqualizerProfile", "hardtechno"), @r"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+    Setting ID            	Value     
+    presetEqualizerProfile	HardTechno
+
+    ----- stderr -----
+    ");
+
+    // Switch to hardware preset, then clear to None ("")
+    assert_cmd_snapshot!(set_and_get(dir.path(), "presetEqualizerProfile", "Acoustic"), @r"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+    Setting ID            	Value   
+    presetEqualizerProfile	Acoustic
+
+    ----- stderr -----
+    ");
+    assert_cmd_snapshot!(set_and_get(dir.path(), "presetEqualizerProfile", ""), @r"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+    Setting ID            	Value
+    presetEqualizerProfile	     
+
+    ----- stderr -----
+    ");
+
+    assert_cmd_snapshot!(set_and_get(dir.path(), "presetEqualizerProfile", "invalidGenre"), @r#"
+    success: false
+    exit_code: 1
+    ----- stdout -----
+
+    ----- stderr -----
+    Error: presetEqualizerProfile: invalidGenre is not a valid option. Expected one of: ["SoundcoreSignature", "Acoustic", "BassBooster", "BassReducer", "Classical", "Podcast", "Dance", "Deep", "Electronic", "Flat", "HipHop", "Jazz", "Latin", "Lounge", "Piano", "Pop", "RnB", "Rock", "SmallSpeakers", "SpokenWord", "TrebleBooster", "TrebleReducer", "Trap", "Techno", "HardTechno", "House", "DrumAndBass", "Dubstep", "Metal", "LoFi", "Indie", "Reggae", "Ambient", "Funk", "Country"]
+    "#);
+}
+
+#[test]
+fn apple_airpods_pro_2_demo_allow_off_toggle_stays_transparency() {
+    let dir = tempdir().unwrap();
+    add_device(dir.path(), "AppleAirPodsPro2");
+
+    assert_cmd_snapshot!(
+        cli(dir.path())
+            .arg("device")
+            .arg("--mac-address")
+            .arg("00:00:00:00:00:00")
+            .arg("setting")
+            .arg("--set")
+            .arg("listeningMode=Off")
+            .arg("--set")
+            .arg("allowOffListeningMode=false")
+            .arg("--set")
+            .arg("allowOffListeningMode=true")
+            .arg("--get")
+            .arg("listeningMode"),
+        @r"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+    Setting ID   	Value       
+    listeningMode	Transparency
+
+    ----- stderr -----
+    "
+    );
 }

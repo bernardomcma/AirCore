@@ -1,105 +1,41 @@
-## About
+# AirCore
 
-OpenSCQ30 is free software for controlling settings for Soundcore headphones and earbuds. It was originally intended for the Soundcore Life Q30, after which the project was named, but a range of devices are now supported.
+**AirCore** is a unified desktop audio control center designed around a clean, Apple HIG-inspired interface — built to seamlessly manage both **Apple AirPods Pro 2** and **Soundcore Life Q30** (alongside the full Soundcore lineup) from a single native Rust application.
 
-### Supported Platforms
+---
 
-[x] Windows - Ready  
-[x] Linux - Ready  
-[x] Android - Ready  
-[ ] MacOS - Beta
+## Highlights
 
-### Supported Devices
+- **Dual-Ecosystem Support (`Air` + `Core`)**
+  - **Apple AirPods Pro 2**: Noise Control (*Off*, *Noise Cancellation*, *Transparency*, *Adaptive*), Adaptive Audio Strength, Conversation Awareness, Personalized Volume, Ear Detection, Stem Controls, Hearing Assistance, and per-piece battery telemetry (*Left / Right / Case*) via the `WPods` AAP named-pipe bridge on Windows (`\\.\pipe\WPods.Aap`).
+  - **Soundcore Life Q30** *(+ 30+ Soundcore headphones & earbuds)*: Multi-scene ANC (*Transport / Indoor / Outdoor*), Transparency, Custom Profiles, Quick Presets, and full 8-band parametric/graphic EQ.
+- **Apple-Inspired Desktop UI**
+  - Refined `libcosmic` interface with tone-stepped Light & Dark surfaces, `1px` hairline borders, inset-grouped cards, responsive split navigation, and interactive frequency-response EQ curves (*Hero* & *Thumbnail* previews).
+  - Streamlined device picker focused by default on **Soundcore Life Q30** and **Apple AirPods Pro 2**, with a one-click toggle to reveal all supported models.
+- **35 Selectable EQ Presets**
+  - Preserves all 22 classic Soundcore presets intact and adds 13 genre-tuned curves: **Trap**, **Techno**, **Hard Techno**, **House**, **Drum & Bass**, **Dubstep**, **Metal**, **Lo-Fi**, **Indie**, **Reggae**, **Ambient**, **Funk**, and **Country** (alongside **Hip Hop**, **Rock**, **Electronic**, and more).
 
-If there's a device not in this list that you want to see supported, check if there's an issue for it, and give the issue for it a 👍 so that I can sort by reactions and prioritize. Otherwise, please open an issue to request support for the device.
+---
 
-| Model  | Name                         |
-| ------ | ---------------------------- |
-| A3004  | Soundcore Q20I               |
-| A3005  | Soundcore Q11i               |
-| A3027  | Soundcore Life Q35           |
-| A3028  | Soundcore Q30 / Life Q30     |
-| A3029  | Soundcore Life Tune          |
-| A3030  | Soundcore Life Tune Pro      |
-| A3031  | Soundcore Vortex             |
-| A3033  | Soundcore Life 2 Neo         |
-| A3035  | Soundcore Space One          |
-| A3040  | Soundcore Space Q45          |
-| A3062  | Soundcore Space One Pro      |
-| A3116  | Soundcore Motion+            |
-| A3330  | Soundcore C30i               |
-| A3388  | Soundcore AeroClip           |
-| A3876  | Soundcore V20i               |
-| A3909  | Soundcore Liberty 2 Pro      |
-| A3926  | Soundcore Life Dot 2S        |
-| A3930  | Soundcore Liberty 2 Pro+     |
-| A3931  | Soundcore Life Dot 2 NC      |
-| A3933  | Soundcore Life Note 3        |
-| A3935  | Soundcore Life A2 NC         |
-| A3936  | Soundcore Space A40          |
-| A3939  | Soundcore Life P3            |
-| A3944  | Soundcore Life P2 Mini       |
-| A3945  | Soundcore Life Note 3S       |
-| A3947  | Soundcore Liberty 4 NC       |
-| A3948  | Soundcore A20i               |
-| A3949  | Soundcore P20i / P25i / R50i |
-| A3951  | Soundcore Liberty Air 2 Pro  |
-| A3952  | Soundcore Liberty 3 Pro      |
-| A3953  | Soundcore Liberty 4          |
-| A3954  | Soundcore Liberty 4 Pro      |
-| A3955  | Soundcore P40i               |
-| A3957  | Soundcore Liberty 5          |
-| A3959  | Soundcore P30i / R50i NC     |
-| A3968  | Soundcore Sport X20          |
-| D1101  | Soundcore C50i               |
-| D1202  | Soundcore P31i               |
-| D1202C | Soundcore R60i NC            |
-| D1301  | Soundcore Sleep A30          |
-| D1402  | Soundcore Space 2            |
+## Running Locally
 
-## Installing
+```powershell
+# Launch AirCore GUI
+cargo run --release -p openscq30-gui
 
-See [GitHub Releases](https://github.com/Oppzippy/OpenSCQ30/releases). All files are signed with [my GPG key](https://kylescheuing.com/publickey.txt).
+# Launch in Demo Mode (test both Life Q30 & AirPods Pro 2 without Bluetooth hardware)
+cargo run -p openscq30-gui -- --demo-mode
 
-[![Flathub](https://img.shields.io/flathub/v/com.oppzippy.OpenSCQ30)](https://flathub.org/apps/com.oppzippy.OpenSCQ30)
-[![IzzyOnDroid](https://img.shields.io/endpoint?url=https://apt.izzysoft.de/fdroid/api/v1/shield/com.oppzippy.openscq30)](https://apt.izzysoft.de/fdroid/index/apk/com.oppzippy.openscq30)
+# CLI usage
+cargo run -p openscq30-cli -- --help
+```
 
-[![Packaging status](https://repology.org/badge/vertical-allrepos/openscq30.svg)](https://repology.org/project/openscq30/versions)
+> **Note for Apple AirPods Pro 2 on Windows:** Real-hardware AAP control connects through `\\.\pipe\WPods.Aap` from [FPNDev/wpods](https://github.com/FPNDev/wpods) (`WPods.Service`).
 
-## Mirrors
+---
 
-Issues and pull requests are accepted on both GitHub and Codeberg, although CI and releases are only on github.
+## Credits & License
 
-- GitHub: https://github.com/Oppzippy/OpenSCQ30
-- Codeberg: https://codeberg.org/Oppzippy/OpenSCQ30
-
-## Contributing
-
-### Code
-
-See [docs/development.md](docs/development.md)
-
-### Translations
-
-[![Translation status](https://translate.codeberg.org/widget/openscq30/multi-auto.svg)](https://translate.codeberg.org/engage/openscq30/)
-
-## Demo
-
-### Desktop
-
-[desktop-demo.webm](https://github.com/user-attachments/assets/3df615f5-2e5d-44e8-9604-f5175c11ea5b)
-
-### Android
-
-[android-demo.webm](https://github.com/user-attachments/assets/bf48a9f3-db73-4f26-b1e7-edac5f3fba32)
-
-## Building
-
-- Windows: [docs/build-windows.md](docs/build-windows.md)
-- MacOS: [docs/build-macos.md](docs/build-macos.md)
-- Linux: [docs/build-linux.md](docs/build-linux.md)
-- Android: [docs/build-android.md](docs/build-android.md)
-
-## Running Tests
-
-`just test` will run all unit and integration tests. To run tests for a specific package, use `just gui/ test` for example.
+- Forked from [Oppzippy/OpenSCQ30](https://github.com/Oppzippy/OpenSCQ30)
+- Apple AirPods Pro 2 AAP Windows integration based on [FPNDev/wpods](https://github.com/FPNDev/wpods)
+- Licensed under **GPL-3.0-or-later** ([LICENSE.txt](LICENSE.txt))

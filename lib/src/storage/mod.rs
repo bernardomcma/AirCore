@@ -1,3 +1,4 @@
+mod device_settings;
 mod equalizer_profile;
 mod migration;
 mod paired_device;
@@ -5,6 +6,7 @@ mod quick_preset;
 mod type_conversions;
 
 use std::{
+    collections::HashMap,
     mem,
     panic::Location,
     path::PathBuf,
@@ -249,4 +251,7 @@ commands!(
         name: Vec<(String, Vec<i16>)>,
     ) -> Result<()>;
     equalizer_profile::delete => fn delete_equalizer_profile(model: DeviceModel, name: String) -> Result<()>;
+    device_settings::fetch => fn fetch_device_settings(mac_address: MacAddr6) -> Result<HashMap<String, String>>;
+    device_settings::upsert => fn upsert_device_setting(mac_address: MacAddr6, setting_key: String, value: String) -> Result<()>;
+    device_settings::delete_for_device => fn delete_device_settings(mac_address: MacAddr6) -> Result<()>;
 );

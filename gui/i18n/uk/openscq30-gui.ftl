@@ -1,5 +1,5 @@
 language-name = Українська
-openscq30 = OpenSCQ30
+openscq30 = AirCore
 device-selection = Вибір пристрою
 select-device = Вибрати пристрій
 connect = Підключити

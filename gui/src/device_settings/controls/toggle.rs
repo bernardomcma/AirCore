@@ -1,14 +1,21 @@
 use std::borrow::Cow;
 
-use cosmic::widget;
+use cosmic::{Element, iced::Length, widget};
 
-pub fn toggle<M>(
-    name: Cow<'_, str>,
+use crate::theme::SPACE_MD;
+
+pub fn toggle<'a, M>(
+    name: Cow<'a, str>,
     value: bool,
-    on_change: impl Fn(bool) -> M + 'static,
-) -> widget::list::ListButton<'_, M>
+    on_change: impl Fn(bool) -> M + 'a,
+) -> Element<'a, M>
 where
     M: Clone + 'static,
 {
-    widget::settings::item::builder(name).toggler(value, on_change)
+    widget::toggler(value)
+        .label(name.into_owned())
+        .width(Length::Fill)
+        .spacing(SPACE_MD)
+        .on_toggle(on_change)
+        .into()
 }
