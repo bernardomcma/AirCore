@@ -11,6 +11,7 @@ pub struct PresetPreviewData {
 }
 
 #[must_use]
+#[allow(dead_code)]
 pub fn normalize_eq_points(
     values: &[i16],
     min: i16,

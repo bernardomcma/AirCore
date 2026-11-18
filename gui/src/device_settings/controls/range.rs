@@ -6,7 +6,8 @@ use openscq30_lib::settings;
 use crate::{
     components,
     device_settings::labeled_setting_row,
-    theme::{self, SPACE_MD, SemanticTone},
+    fluid,
+    theme::{SPACE_MD, SemanticTone},
 };
 
 pub fn i32_range<'a, M>(
@@ -20,13 +21,10 @@ where
     M: Clone + 'static,
 {
     labeled_setting_row(
-        name.clone(),
+        name,
         widget::row![
             components::pill_badge(value.to_string(), SemanticTone::Neutral),
-            widget::slider(range.range, value, on_change)
-                .name(name)
-                .step(range.step)
-                .class(theme::apple_slider()),
+            fluid::fluid_slider(range.range, value, on_change).step(range.step),
         ]
         .spacing(SPACE_MD)
         .align_y(alignment::Vertical::Center),

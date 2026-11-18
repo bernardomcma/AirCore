@@ -1,14 +1,14 @@
-use std::{cell::Cell, marker::PhantomData};
+use std::{cell::Cell, marker::PhantomData, time::Instant};
 
 use cosmic::{
     Element,
-    iced::{Color, Length, Point},
+    iced::{Color, Length, Point, window},
     widget::{self, canvas},
 };
-use itertools::Itertools;
 
 use crate::{
-    device_settings::eq_helpers::{normalize_eq_points, zero_db_y},
+    device_settings::eq_helpers::zero_db_y,
+    spring::{Spring, SpringParams},
     theme,
 };
 
@@ -83,18 +83,168 @@ impl<Message> EqualizerLine<Message> {
     }
 }
 
+pub struct EqualizerLineState {
+    springs: Vec<Spring>,
+    last_tick: Option<Instant>,
+}
+
+impl Default for EqualizerLineState {
+    fn default() -> Self {
+        Self {
+            springs: Vec::new(),
+            last_tick: None,
+        }
+    }
+}
+
+fn normalize_float_points(
+    values: &[f32],
+    min: i16,
+    max: i16,
+    width: f32,
+    height: f32,
+    padding: f32,
+) -> Vec<Point<f32>> {
+    if values.is_empty() {
+        return Vec::new();
+    }
+    let min_f = f32::from(min);
+    let max_f = f32::from(max);
+    let span = (max_f - min_f).max(1.0);
+    let usable_h = (height - padding * 2.0).max(1.0);
+    let len = values.len();
+
+    values
+        .iter()
+        .enumerate()
+        .map(|(i, &val)| {
+            let x = if len == 1 {
+                width * 0.5
+            } else {
+                padding + (width - padding * 2.0) * (i as f32 / (len - 1) as f32)
+            };
+            let norm = ((val - min_f) / span).clamp(0.0, 1.0);
+            let y = padding + usable_h * (1.0 - norm);
+            Point::new(x, y)
+        })
+        .collect()
+}
+
+fn trace_smooth_curve(
+    builder: &mut canvas::path::Builder,
+    points: &[Point<f32>],
+    move_first: bool,
+) {
+    if points.is_empty() {
+        return;
+    }
+    if move_first {
+        builder.move_to(points[0]);
+    } else {
+        builder.line_to(points[0]);
+    }
+    if points.len() == 2 {
+        builder.line_to(points[1]);
+        return;
+    }
+
+    // Catmull-Rom to cubic Bezier conversion for silky-smooth audio curves
+    let tension = 0.22_f32;
+    for i in 0..points.len() - 1 {
+        let p0 = if i == 0 { points[0] } else { points[i - 1] };
+        let p1 = points[i];
+        let p2 = points[i + 1];
+        let p3 = if i + 2 < points.len() {
+            points[i + 2]
+        } else {
+            points[points.len() - 1]
+        };
+
+        let c1 = Point::new(
+            p1.x + (p2.x - p0.x) * tension,
+            p1.y + (p2.y - p0.y) * tension,
+        );
+        let c2 = Point::new(
+            p2.x - (p3.x - p1.x) * tension,
+            p2.y - (p3.y - p1.y) * tension,
+        );
+        builder.bezier_curve_to(c1, c2, p2);
+    }
+}
+
 impl<Message> canvas::Program<Message, cosmic::Theme, cosmic::Renderer> for EqualizerLine<Message> {
-    type State = ();
+    type State = EqualizerLineState;
+
+    fn update(
+        &self,
+        state: &mut Self::State,
+        event: &canvas::Event,
+        _bounds: cosmic::iced::Rectangle,
+        _cursor: cosmic::iced::core::mouse::Cursor,
+    ) -> Option<canvas::Action<Message>> {
+        let mut changed = false;
+        if state.springs.len() != self.values.len() {
+            state.springs = self
+                .values
+                .iter()
+                .map(|&v| Spring::new(f32::from(v), SpringParams::SNAPPY))
+                .collect();
+            self.cache.clear();
+        } else {
+            for (spring, &val) in state.springs.iter_mut().zip(self.values.iter()) {
+                let target = f32::from(val);
+                if (spring.target - target).abs() > 0.01 {
+                    spring.set_target(target);
+                    changed = true;
+                }
+            }
+        }
+
+        if let canvas::Event::Window(window::Event::RedrawRequested(now)) = event {
+            let dt = state
+                .last_tick
+                .map_or(1.0 / 60.0, |prev| now.duration_since(prev).as_secs_f32());
+            state.last_tick = Some(*now);
+
+            let mut any_moving = false;
+            for spring in &mut state.springs {
+                if spring.step(dt) {
+                    any_moving = true;
+                }
+            }
+            if any_moving {
+                self.cache.clear();
+                return Some(canvas::Action::request_redraw());
+            } else {
+                state.last_tick = None;
+                self.cache.clear();
+            }
+        } else if changed || state.springs.iter().any(|s| !s.is_settled()) {
+            if state.last_tick.is_none() {
+                state.last_tick = Some(Instant::now());
+            }
+            self.cache.clear();
+            return Some(canvas::Action::request_redraw());
+        }
+
+        None
+    }
 
     fn draw(
         &self,
-        _state: &Self::State,
+        state: &Self::State,
         renderer: &cosmic::Renderer,
         theme: &cosmic::Theme,
         bounds: cosmic::iced::Rectangle,
         _cursor: cosmic::iced::core::mouse::Cursor,
     ) -> Vec<canvas::Geometry<cosmic::iced::Renderer>> {
         self.sync_theme_cache(theme);
+        let animated_values: Vec<f32> = if state.springs.len() == self.values.len() {
+            state.springs.iter().map(|s| s.value).collect()
+        } else {
+            self.values.iter().map(|&v| f32::from(v)).collect()
+        };
+
         let equalizer_line = self.cache.draw(renderer, bounds.size(), |frame| {
             let p = theme::palette(theme);
             let padding = match self.variant {
@@ -156,21 +306,17 @@ impl<Message> canvas::Program<Message, cosmic::Theme, cosmic::Renderer> for Equa
                 }
             }
 
-            let raw_points = normalize_eq_points(
-                &self.values,
+            let points = normalize_float_points(
+                &animated_values,
                 self.min,
                 self.max,
                 frame.width(),
                 frame.height(),
                 padding,
             );
-            if raw_points.is_empty() {
+            if points.is_empty() {
                 return;
             }
-            let points: Vec<Point<f32>> = raw_points
-                .into_iter()
-                .map(|(x, y)| Point::new(x, y))
-                .collect();
 
             let stroke_color: Color = match self.variant {
                 EqualizerLineVariant::Hero => p.accent_text,
@@ -181,9 +327,7 @@ impl<Message> canvas::Program<Message, cosmic::Theme, cosmic::Renderer> for Equa
             if matches!(self.variant, EqualizerLineVariant::Hero) && points.len() >= 2 {
                 let area = canvas::Path::new(|builder| {
                     builder.move_to(Point::new(points[0].x, zero_y));
-                    for pt in &points {
-                        builder.line_to(*pt);
-                    }
+                    trace_smooth_curve(builder, &points, false);
                     if let Some(last) = points.last() {
                         builder.line_to(Point::new(last.x, zero_y));
                     }
@@ -205,9 +349,12 @@ impl<Message> canvas::Program<Message, cosmic::Theme, cosmic::Renderer> for Equa
                 EqualizerLineVariant::Thumbnail { active: false } => 1.75,
             };
 
-            for (left, right) in points.iter().copied().tuple_windows() {
+            if points.len() >= 2 {
+                let curve = canvas::Path::new(|builder| {
+                    trace_smooth_curve(builder, &points, true);
+                });
                 frame.stroke(
-                    &canvas::Path::line(left, right),
+                    &curve,
                     canvas::Stroke {
                         style: canvas::stroke::Style::Solid(stroke_color),
                         width: stroke_width,

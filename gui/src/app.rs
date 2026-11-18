@@ -26,7 +26,7 @@ use crate::{
     components,
     config::{AppTheme, Config},
     device_selection::{self, DeviceSelectionModel},
-    device_settings, fl,
+    device_settings, fl, fluid,
     theme::{self, DRAWER_SINGLE_PANE_BREAKPOINT, SPACE_LG, SPACE_MD, SPACE_SM},
     utils::coalesce_result,
 };
@@ -261,18 +261,27 @@ impl Application for AppModel {
                 widget::space::horizontal().width(Length::Fill).into()
             } else {
                 match &self.screen {
-                    Screen::DeviceSelection(device_selection_model) => cosmic::Element::from(
-                        device_selection_model
-                            .view()
-                            .map(Message::DeviceSelectionScreen),
+                    Screen::DeviceSelection(device_selection_model) => fluid::fluid_transition(
+                        0,
+                        cosmic::Element::from(
+                            device_selection_model
+                                .view()
+                                .map(Message::DeviceSelectionScreen),
+                        ),
                     ),
-                    Screen::AddDevice(add_device_model) => {
-                        add_device_model.view().map(Message::AddDeviceScreen)
+                    Screen::AddDevice(add_device_model) => fluid::fluid_transition(
+                        1,
+                        add_device_model.view().map(Message::AddDeviceScreen),
+                    ),
+                    Screen::Connecting { canceled: _, name } => {
+                        fluid::fluid_transition(2, self.view_cancel(name))
                     }
-                    Screen::Connecting { canceled: _, name } => self.view_cancel(name),
-                    Screen::DeviceSettings(device_settings_model) => device_settings_model
-                        .view()
-                        .map(Message::DeviceSettingsScreen),
+                    Screen::DeviceSettings(device_settings_model) => fluid::fluid_transition(
+                        3,
+                        device_settings_model
+                            .view()
+                            .map(Message::DeviceSettingsScreen),
+                    ),
                 }
             };
 

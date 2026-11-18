@@ -32,7 +32,7 @@ use crate::{
         PresetPreviewData, build_preset_previews, format_db_value, format_hz_label,
     },
     equalizer_line::EqualizerLine,
-    fl, handle_soft_error,
+    fl, fluid, handle_soft_error,
     openscq30_v1_migration::{self, LegacyEqualizerProfile},
     theme::{
         self, EQ_TWO_COLUMN_BREAKPOINT, NARROW_BREAKPOINT, SIDEBAR_BREAKPOINT, SPACE_LG, SPACE_MD,
@@ -724,6 +724,12 @@ impl DeviceSettingsModel {
                     widget::space().into()
                 };
 
+            let transition_key = self
+                .nav_model
+                .position(self.nav_model.active())
+                .unwrap_or(0) as u64;
+            let active_view = fluid::fluid_transition(transition_key, active_view);
+
             if show_sidebar {
                 let sidebar = self.view_sidebar();
                 widget::row![
@@ -819,24 +825,25 @@ impl DeviceSettingsModel {
                     theme::category_squircle_container(sq_color),
                 ));
 
-            widget::button::custom(
-                widget::row![
-                    squircle,
-                    widget::text::body(label.clone())
-                        .wrapping(Wrapping::Word)
-                        .width(Length::Fill),
-                    theme::muted_caption("›"),
-                ]
-                .spacing(SPACE_SM)
-                .align_y(alignment::Vertical::Center)
-                .width(Length::Fill),
+            fluid::fluid_pressable(
+                widget::button::custom(
+                    widget::row![
+                        squircle,
+                        widget::text::body(label.clone())
+                            .wrapping(Wrapping::Word)
+                            .width(Length::Fill),
+                        theme::muted_caption("›"),
+                    ]
+                    .spacing(SPACE_SM)
+                    .align_y(alignment::Vertical::Center)
+                    .width(Length::Fill),
+                )
+                .name(label)
+                .class(theme::nav_pill_button(is_active))
+                .padding([SPACE_SM, SPACE_SM])
+                .width(Length::Fill)
+                .on_press(Message::SelectCategory(entity)),
             )
-            .name(label)
-            .class(theme::nav_pill_button(is_active))
-            .padding([SPACE_SM, SPACE_SM])
-            .width(Length::Fill)
-            .on_press(Message::SelectCategory(entity))
-            .into()
         }))
         .spacing(4)
         .width(Length::Fill);
@@ -865,12 +872,13 @@ impl DeviceSettingsModel {
             .map(|entity| {
                 let label = self.nav_model.text(entity).unwrap_or_default().to_string();
                 let is_active = entity == active_entity;
-                widget::button::custom(widget::text::caption_heading(label.clone()))
-                    .name(label)
-                    .class(theme::card_button(is_active))
-                    .padding([6, 12])
-                    .on_press(Message::SelectCategory(entity))
-                    .into()
+                fluid::fluid_pressable(
+                    widget::button::custom(widget::text::caption_heading(label.clone()))
+                        .name(label)
+                        .class(theme::card_button(is_active))
+                        .padding([6, 12])
+                        .on_press(Message::SelectCategory(entity)),
+                )
             })
             .collect();
 

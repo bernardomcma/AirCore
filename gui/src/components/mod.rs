@@ -12,8 +12,11 @@ use cosmic::{
     widget,
 };
 
-use crate::theme::{
-    self, MAX_CONTENT_WIDTH, SPACE_LG, SPACE_MD, SPACE_SM, SPACE_XL, SPACE_XS, SemanticTone,
+use crate::{
+    fluid,
+    theme::{
+        self, MAX_CONTENT_WIDTH, SPACE_LG, SPACE_MD, SPACE_SM, SPACE_XL, SPACE_XS, SemanticTone,
+    },
 };
 
 /// Wraps a scrollable/centered page body with consistent horizontal gutters and max width.
@@ -58,49 +61,52 @@ pub fn elevated_card<'a, M: 'a>(
         .width(Length::Fill)
 }
 
-/// Primary Apple Blue filled action button with explicit AccessKit name.
+/// Primary Apple Blue filled action button with explicit AccessKit name and tactile press squish.
 pub fn primary_button<'a, M: Clone + 'static>(
     label: impl Into<Cow<'a, str>> + 'a,
     on_press: M,
 ) -> Element<'a, M> {
     let label_cow: Cow<'a, str> = label.into();
     let name_str = label_cow.to_string();
-    widget::button::custom(widget::text::body(label_cow).align_x(Horizontal::Center))
-        .name(name_str)
-        .class(theme::primary_button())
-        .padding([SPACE_SM, SPACE_LG])
-        .on_press(on_press)
-        .into()
+    fluid::fluid_pressable(
+        widget::button::custom(widget::text::body(label_cow).align_x(Horizontal::Center))
+            .name(name_str)
+            .class(theme::primary_button())
+            .padding([SPACE_SM, SPACE_LG])
+            .on_press(on_press),
+    )
 }
 
-/// Secondary neutral bordered action button with explicit AccessKit name.
+/// Secondary neutral bordered action button with explicit AccessKit name and tactile press squish.
 pub fn secondary_button<'a, M: Clone + 'static>(
     label: impl Into<Cow<'a, str>> + 'a,
     on_press: M,
 ) -> Element<'a, M> {
     let label_cow: Cow<'a, str> = label.into();
     let name_str = label_cow.to_string();
-    widget::button::custom(widget::text::body(label_cow).align_x(Horizontal::Center))
-        .name(name_str)
-        .class(theme::secondary_button())
-        .padding([SPACE_SM, SPACE_LG])
-        .on_press(on_press)
-        .into()
+    fluid::fluid_pressable(
+        widget::button::custom(widget::text::body(label_cow).align_x(Horizontal::Center))
+            .name(name_str)
+            .class(theme::secondary_button())
+            .padding([SPACE_SM, SPACE_LG])
+            .on_press(on_press),
+    )
 }
 
-/// Destructive tinted/bordered action button with explicit AccessKit name.
+/// Destructive tinted/bordered action button with explicit AccessKit name and tactile press squish.
 pub fn destructive_button<'a, M: Clone + 'static>(
     label: impl Into<Cow<'a, str>> + 'a,
     on_press: M,
 ) -> Element<'a, M> {
     let label_cow: Cow<'a, str> = label.into();
     let name_str = label_cow.to_string();
-    widget::button::custom(widget::text::body(label_cow).align_x(Horizontal::Center))
-        .name(name_str)
-        .class(theme::destructive_button())
-        .padding([SPACE_SM, SPACE_LG])
-        .on_press(on_press)
-        .into()
+    fluid::fluid_pressable(
+        widget::button::custom(widget::text::body(label_cow).align_x(Horizontal::Center))
+            .name(name_str)
+            .class(theme::destructive_button())
+            .padding([SPACE_SM, SPACE_LG])
+            .on_press(on_press),
+    )
 }
 
 /// Apple System Settings-style inset grouped section: optional muted header above a card of rows separated by 1px hairlines.

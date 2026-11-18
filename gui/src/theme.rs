@@ -218,6 +218,7 @@ pub fn card_container(theme: &Theme) -> container::Style {
     }
 }
 
+#[allow(dead_code)]
 #[must_use]
 pub fn ios_segmented_track_container(theme: &Theme) -> container::Style {
     let p = palette(theme);
@@ -250,6 +251,7 @@ pub fn category_squircle_container(color: Color) -> impl Fn(&Theme) -> container
     }
 }
 
+#[allow(dead_code)]
 #[must_use]
 pub fn ios_segment_pill_button(selected: bool) -> cosmic::theme::Button {
     cosmic::theme::Button::Custom {

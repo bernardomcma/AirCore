@@ -7,7 +7,7 @@ use openscq30_lib::settings::Equalizer;
 
 use crate::{
     device_settings::eq_helpers::format_db_value,
-    fl,
+    fl, fluid,
     theme::{self, SPACE_SM, SPACE_XS},
 };
 
@@ -49,12 +49,10 @@ where
                             move |band_value| on_change(i as u8, band_value)
                         },
                     ),
-                    widget::slider(setting.min..=setting.max, band_val, {
+                    fluid::fluid_slider(setting.min..=setting.max, band_val, {
                         let on_change = on_change.clone();
                         move |band_value| on_change(i as u8, band_value)
-                    })
-                    .name(hz_label)
-                    .class(theme::apple_slider()),
+                    }),
                 ]
                 .spacing(SPACE_SM)
                 .align_y(alignment::Vertical::Center),

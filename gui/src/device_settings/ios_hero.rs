@@ -3,10 +3,11 @@
 
 use std::borrow::Cow;
 use std::f32::consts::{FRAC_PI_2, TAU};
+use std::time::Instant;
 
 use cosmic::{
     Apply, Element,
-    iced::{Color, Length, Point, Radians, alignment, core::text::Wrapping},
+    iced::{Color, Length, Point, Radians, alignment, core::text::Wrapping, window},
     widget::{
         self,
         canvas::{self, path::Arc as PathArc},
@@ -20,7 +21,8 @@ use openscq30_lib::{
 
 use crate::{
     app::DebugOpenSCQ30Device,
-    fl, icons,
+    fl, fluid, icons,
+    spring::{Spring, SpringParams},
     theme::{self, SPACE_LG, SPACE_MD, SPACE_SM, SPACE_XS},
 };
 
@@ -30,12 +32,72 @@ struct BatteryRing {
     is_charging: bool,
 }
 
+struct BatteryRingState {
+    initialized: bool,
+    last_percent: u8,
+    spring: Spring,
+    last_tick: Option<Instant>,
+}
+
+impl Default for BatteryRingState {
+    fn default() -> Self {
+        Self {
+            initialized: false,
+            last_percent: 0,
+            spring: Spring::new(0.0, SpringParams::GENTLE),
+            last_tick: None,
+        }
+    }
+}
+
 impl<M> canvas::Program<M, cosmic::Theme, cosmic::Renderer> for BatteryRing {
-    type State = ();
+    type State = BatteryRingState;
+
+    fn update(
+        &self,
+        state: &mut Self::State,
+        event: &canvas::Event,
+        _bounds: cosmic::iced::Rectangle,
+        _cursor: cosmic::iced::core::mouse::Cursor,
+    ) -> Option<canvas::Action<M>> {
+        let target = f32::from(self.percent.min(100)) / 100.0;
+        if !state.initialized {
+            state.initialized = true;
+            state.last_percent = self.percent;
+            state.spring.snap_to(0.0);
+            state.spring.set_target(target);
+            state.last_tick = Some(Instant::now());
+            return Some(canvas::Action::request_redraw());
+        } else if state.last_percent != self.percent {
+            state.last_percent = self.percent;
+            state.spring.set_target(target);
+            if state.last_tick.is_none() {
+                state.last_tick = Some(Instant::now());
+            }
+            return Some(canvas::Action::request_redraw());
+        }
+
+        if let canvas::Event::Window(window::Event::RedrawRequested(now)) = event {
+            let dt = state
+                .last_tick
+                .map_or(1.0 / 60.0, |prev| now.duration_since(prev).as_secs_f32());
+            state.last_tick = Some(*now);
+            if state.spring.step(dt) {
+                return Some(canvas::Action::request_redraw());
+            } else {
+                state.last_tick = None;
+            }
+        } else if !state.spring.is_settled() && state.last_tick.is_none() {
+            state.last_tick = Some(Instant::now());
+            return Some(canvas::Action::request_redraw());
+        }
+
+        None
+    }
 
     fn draw(
         &self,
-        _state: &Self::State,
+        state: &Self::State,
         renderer: &cosmic::Renderer,
         theme: &cosmic::Theme,
         bounds: cosmic::iced::Rectangle,
@@ -84,7 +146,11 @@ impl<M> canvas::Program<M, cosmic::Theme, cosmic::Renderer> for BatteryRing {
         );
 
         // Progress arc starting from 12 o'clock (-PI/2)
-        let clamped = f32::from(self.percent.min(100)) / 100.0;
+        let clamped = if state.initialized {
+            state.spring.value.clamp(0.0, 1.0)
+        } else {
+            f32::from(self.percent.min(100)) / 100.0
+        };
         if clamped > 0.005 {
             let sweep = (clamped * TAU).min(TAU - 0.001);
             let arc_path = canvas::Path::new(|b| {
@@ -200,8 +266,8 @@ fn mode_icon_for_option(option: &str) -> widget::icon::Handle {
     }
 }
 
-/// Renders an iOS 26 / iOS 27 pill-shaped segmented control (`#E5E5EA` stadium track with
-/// a floating white pill on the active segment, optional mode icons, and centered labels below).
+/// Renders an iOS 26 / iOS 27 fluid pill-shaped segmented control (`#E5E5EA` stadium track with
+/// a spring-animated floating white pill, 1:1 drag/scrub, optional mode icons, and centered labels below).
 pub fn ios_segmented_control<'a, M: Clone + 'static>(
     title: Option<Cow<'a, str>>,
     setting: &'a Select,
@@ -215,28 +281,20 @@ pub fn ios_segmented_control<'a, M: Clone + 'static>(
         .position(|opt| opt.as_ref() == selected_value);
     let options = setting.options.clone();
 
-    let mut pill_buttons: Vec<Element<'a, M>> = Vec::with_capacity(setting.options.len());
+    let mut segments: Vec<Element<'a, M>> = Vec::with_capacity(setting.options.len());
     let mut bottom_labels: Vec<Element<'a, M>> = Vec::with_capacity(setting.options.len());
 
     for (idx, localized) in setting.localized_options.iter().enumerate() {
-        let is_selected = selected_idx == Some(idx);
-        let msg = on_select(&options[idx]);
-
         if show_mode_icons {
             let icon_handle = mode_icon_for_option(&options[idx]);
-            let btn = widget::button::custom(
-                widget::container(widget::icon(icon_handle).size(22))
-                    .width(Length::Fill)
-                    .align_x(alignment::Horizontal::Center)
-                    .align_y(alignment::Vertical::Center),
-            )
-            .name(localized.clone())
-            .class(theme::ios_segment_pill_button(is_selected))
-            .padding([9, 12])
-            .width(Length::FillPortion(1))
-            .on_press(msg);
+            let segment_el: Element<'a, M> = widget::container(widget::icon(icon_handle).size(22))
+                .width(Length::Fill)
+                .padding([9, 12])
+                .align_x(alignment::Horizontal::Center)
+                .align_y(alignment::Vertical::Center)
+                .into();
 
-            pill_buttons.push(btn.into());
+            segments.push(segment_el);
             bottom_labels.push(
                 widget::text::caption(localized.clone())
                     .wrapping(Wrapping::Word)
@@ -245,33 +303,24 @@ pub fn ios_segmented_control<'a, M: Clone + 'static>(
                     .into(),
             );
         } else {
-            let btn = widget::button::custom(
+            let segment_el: Element<'a, M> = widget::container(
                 widget::text::caption_heading(localized.clone())
                     .wrapping(Wrapping::Word)
                     .align_x(alignment::Horizontal::Center)
                     .width(Length::Fill),
             )
-            .name(localized.clone())
-            .class(theme::ios_segment_pill_button(is_selected))
+            .width(Length::Fill)
             .padding([8, 12])
-            .width(Length::FillPortion(1))
-            .on_press(msg);
+            .align_x(alignment::Horizontal::Center)
+            .align_y(alignment::Vertical::Center)
+            .into();
 
-            pill_buttons.push(btn.into());
+            segments.push(segment_el);
         }
     }
 
-    let track = widget::container(
-        widget::row(pill_buttons)
-            .spacing(4)
-            .align_y(alignment::Vertical::Center)
-            .width(Length::Fill),
-    )
-    .class(cosmic::theme::Container::custom(
-        theme::ios_segmented_track_container,
-    ))
-    .padding(4)
-    .width(Length::Fill);
+    let track =
+        fluid::fluid_segmented_control(segments, selected_idx, move |idx| on_select(&options[idx]));
 
     widget::column![]
         .push_maybe(title.map(|t| {
