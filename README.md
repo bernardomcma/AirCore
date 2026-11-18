@@ -2,6 +2,8 @@
 
 **AirCore** is a unified desktop audio control center designed around a clean, Apple HIG-inspired interface — built to seamlessly manage both **Apple AirPods Pro 2** and **Soundcore Life Q30** (alongside the full Soundcore lineup) from a single native Rust application.
 
+![AirCore Desktop UI](screenshots/aircore-home.png)
+
 ---
 
 ## Highlights
