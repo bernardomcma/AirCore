@@ -74,3 +74,5 @@ no-quick-presets = Nenhuma Predefinição Rápida
 no-quick-presets-hint = Salve a configuração atual do dispositivo como uma Predefinição Rápida para alternar com um clique.
 paired-devices-subtitle = Conecte-se a um dispositivo pareado ou adicione um novo.
 select-device-model-subtitle = Life Q30 e AirPods Pro 2 estão prontos abaixo, ou exiba todos os modelos compatíveis.
+windows-microphone = Microfone no Windows
+windows-microphone-hint = Desative o microfone Bluetooth no Windows para economizar bateria e evitar o modo Hands-Free.

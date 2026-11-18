@@ -1,3 +1,5 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 use std::str::FromStr;
 
 use i18n_embed::unic_langid::LanguageIdentifier;
@@ -20,6 +22,7 @@ mod theme;
 mod throttle;
 mod utils;
 mod warning;
+pub mod windows_mic;
 
 fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
@@ -33,7 +36,7 @@ fn main() -> anyhow::Result<()> {
         )
         .pretty()
         .init();
-    #[cfg(windows)]
+    #[cfg(all(windows, debug_assertions))]
     match is_launched_from_console() {
         Ok(true) => (),
         Ok(false) => {
@@ -83,7 +86,7 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[cfg(windows)]
+#[cfg(all(windows, debug_assertions))]
 fn is_launched_from_console() -> anyhow::Result<bool> {
     use sysinfo::{ProcessRefreshKind, RefreshKind, System};
 
@@ -99,7 +102,7 @@ fn is_launched_from_console() -> anyhow::Result<bool> {
     Ok(!parent_process_name.eq_ignore_ascii_case("explorer.exe"))
 }
 
-#[cfg(windows)]
+#[cfg(all(windows, debug_assertions))]
 fn detach_from_console() -> anyhow::Result<()> {
     unsafe { windows::Win32::System::Console::FreeConsole().map_err(Into::into) }
 }

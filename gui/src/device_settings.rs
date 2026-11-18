@@ -1,4 +1,5 @@
 mod controls;
+pub mod device_3d;
 pub mod eq_helpers;
 pub mod ios_hero;
 mod legacy_migration;
@@ -40,6 +41,7 @@ use crate::{
     },
     throttle,
     utils::coalesce_result,
+    windows_mic::{self, WindowsMicStatus},
 };
 
 pub const MODIFIABLE_SELECT_ADD_INPUT_ID: &str = "modifiable-select-dialog-add-item-text-input";
@@ -71,6 +73,8 @@ pub enum Message {
     SetTimeMinute(SettingId, String),
     SetTimePm(SettingId, bool),
     RefreshTimeTwelveHour(SettingId),
+    ToggleWindowsMic(bool),
+    WindowsMicUpdated(WindowsMicStatus),
 }
 
 impl From<quick_presets::Message> for Message {
@@ -103,6 +107,7 @@ pub struct DeviceSettingsModel {
     legacy_equalizer_migration: Option<legacy_migration::LegacyMigrationModel>,
     quick_presets_model: quick_presets::QuickPresetsModel,
     throttle: throttle::Throttle,
+    windows_mic: WindowsMicStatus,
 }
 
 #[derive(Debug)]
@@ -473,15 +478,40 @@ impl DeviceSettingsModel {
             dialog: None,
             legacy_equalizer_migration: None,
             quick_presets_model,
+            windows_mic: WindowsMicStatus::default(),
         };
+        let mic_query_task = model.refresh_windows_mic();
         let task = Task::batch([
             model.refresh(),
+            mic_query_task,
             quick_presets_refresh_task.map(Into::into),
             Self::initialize_legacy_migration(config_dir),
             Task::stream(stream),
             watch_for_disconnect_task,
         ]);
         (model, task)
+    }
+
+    fn device_name_for_mic(&self) -> (String, String) {
+        let custom_name = match self.device.setting(&SettingId::DeviceName) {
+            Some(Setting::Information {
+                translated_value, ..
+            }) if !translated_value.trim().is_empty() => translated_value,
+            _ => String::new(),
+        };
+        (custom_name, self.device.model().to_string())
+    }
+
+    fn refresh_windows_mic(&self) -> Task<Message> {
+        let (device_name, model_name) = self.device_name_for_mic();
+        Task::future(async move {
+            let status = tokio::task::spawn_blocking(move || {
+                windows_mic::query_device_mic(&device_name, &model_name)
+            })
+            .await
+            .unwrap_or_default();
+            Message::WindowsMicUpdated(status)
+        })
     }
 
     fn initialize_legacy_migration(config_dir: PathBuf) -> Task<Message> {
@@ -946,6 +976,26 @@ impl DeviceSettingsModel {
             }
         }
         flush_pending(&mut pending_rows, &mut sections);
+
+        if self.windows_mic.available
+            && (is_first_category
+                || matches!(category_id, CategoryId::SoundModes | CategoryId::General))
+        {
+            let subtitle = self
+                .windows_mic
+                .endpoint_name
+                .as_deref()
+                .map(|ep| format!("{} ({ep})", fl!("windows-microphone-hint")))
+                .unwrap_or_else(|| fl!("windows-microphone-hint"));
+
+            let mic_row = components::setting_row(
+                fl!("windows-microphone"),
+                Some(subtitle.into()),
+                fluid::fluid_switch(self.windows_mic.enabled, Message::ToggleWindowsMic),
+                is_narrow,
+            );
+            sections.push(components::inset_grouped_section(None, vec![mic_row]));
+        }
 
         widget::scrollable(components::page_frame(
             widget::column(sections)
@@ -1469,6 +1519,25 @@ impl DeviceSettingsModel {
     pub fn update(&mut self, message: Message) -> Action {
         match message {
             Message::SelectCategory(id) => Action::Task(self.on_nav_select(id)),
+            Message::ToggleWindowsMic(enabled) => {
+                self.windows_mic.enabled = enabled;
+                let (device_name, model_name) = self.device_name_for_mic();
+                Action::Task(Task::future(async move {
+                    let result = tokio::task::spawn_blocking(move || {
+                        windows_mic::set_device_mic_enabled(&device_name, &model_name, enabled)
+                    })
+                    .await;
+                    match result {
+                        Ok(Ok(status)) => Message::WindowsMicUpdated(status),
+                        Ok(Err(err)) => Message::Warning(err),
+                        Err(err) => Message::Warning(err.to_string()),
+                    }
+                }))
+            }
+            Message::WindowsMicUpdated(status) => {
+                self.windows_mic = status;
+                Action::None
+            }
             Message::QuickPresets(inner) => match self.quick_presets_model.update(inner) {
                 quick_presets::Action::Warning(text) => Action::Warning(text),
                 quick_presets::Action::None => Action::None,

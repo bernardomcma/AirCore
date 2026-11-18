@@ -21,6 +21,7 @@ use openscq30_lib::{
 
 use crate::{
     app::DebugOpenSCQ30Device,
+    device_settings::device_3d::{self, Device3DModel},
     fl, fluid, icons,
     spring::{Spring, SpringParams},
     theme::{self, SPACE_LG, SPACE_MD, SPACE_SM, SPACE_XS},
@@ -231,6 +232,54 @@ fn read_charging(device: &DebugOpenSCQ30Device, id: SettingId) -> bool {
     }
 }
 
+struct StudioShadow;
+
+impl<M> canvas::Program<M, cosmic::Theme, cosmic::Renderer> for StudioShadow {
+    type State = ();
+
+    fn draw(
+        &self,
+        _state: &Self::State,
+        renderer: &cosmic::Renderer,
+        theme: &cosmic::Theme,
+        bounds: cosmic::iced::Rectangle,
+        _cursor: cosmic::iced::core::mouse::Cursor,
+    ) -> Vec<canvas::Geometry<cosmic::iced::Renderer>> {
+        let mut frame = canvas::Frame::new(renderer, bounds.size());
+        let is_dark = theme.cosmic().is_dark;
+        let cx = bounds.width * 0.5;
+        let cy = bounds.height * 0.5;
+
+        for (scale, alpha) in [(1.0_f32, 0.04), (0.76, 0.06), (0.50, 0.08)] {
+            let rx = (bounds.width * 0.45) * scale;
+            let ry = (bounds.height * 0.42) * scale;
+            let path = canvas::Path::new(|b| {
+                let steps = 28;
+                for i in 0..=steps {
+                    let a = (i as f32 / steps as f32) * TAU;
+                    let pt = Point::new(cx + a.cos() * rx, cy + a.sin() * ry);
+                    if i == 0 {
+                        b.move_to(pt);
+                    } else {
+                        b.line_to(pt);
+                    }
+                }
+                b.close();
+            });
+            let final_alpha = if is_dark { alpha * 2.2 } else { alpha };
+            frame.fill(&path, Color::from_rgba(0.0, 0.0, 0.0, final_alpha));
+        }
+        vec![frame.into_geometry()]
+    }
+}
+
+fn studio_shadow<'a, M: 'a>(width: f32) -> Element<'a, M> {
+    widget::canvas(StudioShadow)
+        .width(Length::Fixed(width))
+        .height(Length::Fixed(12.0))
+        .into()
+}
+
 fn battery_ring_column<'a, M: 'a>(
     percent: u8,
     is_charging: bool,
@@ -373,18 +422,16 @@ pub fn view_device_hero<'a, M: Clone + 'static>(
         let buds_chg = left_chg || right_chg;
 
         let buds_col = widget::column![
-            widget::icon(icons::airpods_buds())
-                .width(Length::Fixed(132.0))
-                .height(Length::Fixed(88.0)),
+            device_3d::view_3d_device(Device3DModel::AirPodsBuds, 172.0, 122.0),
+            studio_shadow(110.0),
         ]
         .push_maybe(buds_pct.map(|pct| battery_ring_column(pct, buds_chg, None)))
         .spacing(SPACE_SM)
         .align_x(alignment::Horizontal::Center);
 
         let case_col = widget::column![
-            widget::icon(icons::airpods_case())
-                .width(Length::Fixed(132.0))
-                .height(Length::Fixed(88.0)),
+            device_3d::view_3d_device(Device3DModel::AirPodsCase, 172.0, 122.0),
+            studio_shadow(100.0),
         ]
         .push_maybe(case_pct.map(|pct| battery_ring_column(pct, case_chg, None)))
         .spacing(SPACE_SM)
@@ -417,9 +464,8 @@ pub fn view_device_hero<'a, M: Clone + 'static>(
         };
 
         widget::column![
-            widget::icon(icons::headphones_q30())
-                .width(Length::Fixed(148.0))
-                .height(Length::Fixed(98.0)),
+            device_3d::view_3d_device(Device3DModel::SoundcoreQ30, 192.0, 132.0),
+            studio_shadow(120.0),
         ]
         .push_maybe(battery_row)
         .spacing(SPACE_SM)
