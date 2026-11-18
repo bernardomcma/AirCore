@@ -1,5 +1,0 @@
-* Features
-  - Show case battery level for relevant devices
-  - Add many previously unimplemented on/off settings for relevant devices
-  - Add battery level for Space Q45
-  - Add button configuration for Space Q45

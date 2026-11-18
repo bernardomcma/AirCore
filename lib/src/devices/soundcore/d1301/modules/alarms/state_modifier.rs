@@ -6,11 +6,8 @@ use tokio::sync::watch;
 use crate::{
     api::device,
     devices::soundcore::{
-        common::{
-            packet::{PacketIOController, inbound::TryToPacket},
-            state_modifier::StateModifier,
-        },
-        d1301::{self, packets::inbound::AlarmsPacket, structures::Alarm},
+        common::{packet::PacketIOController, state_modifier::StateModifier},
+        d1301::{self, structures::Alarm},
     },
 };
 
@@ -103,6 +100,9 @@ where
         // setting though, so this isn't enabled for release builds.
         #[cfg(debug_assertions)]
         {
+            use crate::devices::soundcore::{
+                common::packet::inbound::TryToPacket, d1301::packets::inbound::AlarmsPacket,
+            };
             let alarms_packet: AlarmsPacket = self
                 .packet_io
                 .send_with_response(&d1301::packets::outbound::request_alarms())

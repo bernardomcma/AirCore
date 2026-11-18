@@ -75,7 +75,7 @@ mod tests {
         DeviceModel,
         devices::soundcore::common::{
             device::{SoundcoreDeviceConfig, test_utils::TestSoundcoreDevice},
-            packet::{self},
+            packet,
         },
         settings::{SettingId, Value},
     };

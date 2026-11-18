@@ -8,15 +8,8 @@ use crate::api::connection::{
 };
 
 cfg_select! {
-    target_os = "linux" => {
-        mod linux;
-
-    }
     target_os = "windows" => {
         mod windows;
-    }
-    target_os = "macos" => {
-        mod macos;
     }
     _ => {
         mod none;
@@ -36,10 +29,12 @@ pub trait ConnectionBackends {
     fn aap(&self) -> impl Future<Output = connection::Result<Self::Aap>> + Send;
 }
 
+#[allow(dead_code)]
 pub struct UnsupportedAapBackend {
     reason: &'static str,
 }
 
+#[allow(dead_code)]
 impl UnsupportedAapBackend {
     pub const fn new(reason: &'static str) -> Self {
         Self { reason }
@@ -70,14 +65,8 @@ impl AapBackend for UnsupportedAapBackend {
 
 pub fn default_backends() -> Option<impl ConnectionBackends> {
     cfg_select! {
-        target_os = "linux" => {
-            Some(linux::PlatformConnectionBackends)
-        }
         target_os = "windows" => {
             Some(windows::PlatformConnectionBackends)
-        }
-        target_os = "macos" => {
-            Some(macos::PlatformConnectionBackends)
         }
         _ => {
             None::<none::NoneConnectionBackends>

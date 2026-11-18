@@ -1,2 +1,0 @@
-* Fixes
-  - Bluetooth not working at all on Windows

@@ -6,14 +6,14 @@ BEGIN
     BEGIN
         BLOCK "040904B0"
         BEGIN
-            VALUE "CompanyName", "Oppzippy"
-            VALUE "FileDescription", "OpenSCQ30"
+            VALUE "CompanyName", "Bernardo"
+            VALUE "FileDescription", "AirCore"
             VALUE "FileVersion", "${VERSION}"
             VALUE "InternalName", "openscq30-gui"
             VALUE "OriginalFilename", "openscq30-gui.exe"
-            VALUE "ProductName", "OpenSCQ30"
+            VALUE "ProductName", "AirCore"
             VALUE "ProductVersion", "${VERSION}"
-            VALUE "LegalCopyright", "(C) Kyle Scheuing"
+            VALUE "LegalCopyright", "(C) Bernardo / Kyle Scheuing"
         END
     END
 

@@ -45,10 +45,6 @@ pathfinding = { workspace = true }
 palette = { workspace = true }
 bitflags = { workspace = true }
 
-[target.'cfg(target_os = "linux")'.dependencies]
-bluer = { workspace = true, features = ["bluetoothd", "rfcomm"] }
-tokio = { workspace = true, features = ["rt-multi-thread"] }
-
 [target.'cfg(target_os = "windows")'.dependencies]
 rusqlite = { workspace = true, features = ["bundled"] }
 hex = { workspace = true }
@@ -68,25 +64,6 @@ windows = { workspace = true, features = [
     "Win32_Devices_Properties",
     "Win32_System_Pipes",
     "Win32_System_Services",
-] }
-
-[target.'cfg(target_os = "android")'.dependencies]
-rusqlite = { workspace = true, features = ["bundled"] }
-rust-embed = { workspace = true, features = ["debug-embed"] }
-
-[target.'cfg(target_os = "macos")'.dependencies]
-# The system sqlite on macOS 15 (3.43) is too old for the migrations (json_valid with 2 args needs 3.45+)
-rusqlite = { workspace = true, features = ["bundled"] }
-tokio = { workspace = true, features = ["rt-multi-thread"] }
-objc2 = { workspace = true }
-objc2-foundation = { workspace = true }
-objc2-io-bluetooth = { workspace = true, features = [
-    "Bluetooth",
-    "IOBluetoothDevice",
-    "IOBluetoothRFCOMMChannel",
-    "IOBluetoothSDPServiceRecord",
-    "IOBluetoothSDPUUID",
-    "IOBluetoothSDPDataElement",
 ] }
 
 [dev-dependencies]

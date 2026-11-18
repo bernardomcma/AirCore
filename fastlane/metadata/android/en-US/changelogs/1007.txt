@@ -1,7 +1,0 @@
-* Breaking Changes
-  - Custom equalizer profiles are now device specific. To migrate legacy equalizer profiles, see the Legacy Equalizer Profile Migration menu after connecting to a device.
-  - Quick presets are now stored in a different format, and no automatic migration is available, so they must be re-created.
-  - Device model auto detection is removed, so you now need to select the device model when connecting.
-
-* Features
-  - See github changelog for more info

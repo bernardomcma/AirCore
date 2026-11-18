@@ -45,9 +45,6 @@ toml = { workspace = true }
 itertools = { workspace = true }
 open = { workspace = true }
 
-[target.'cfg(target_os = "linux")'.dependencies]
-libcosmic = { workspace = true, features = ["wayland"] }
-
 [target.'cfg(target_os = "windows")'.dependencies]
 sysinfo = { workspace = true }
 windows = { workspace = true, features = ["Win32_System_Console"] }

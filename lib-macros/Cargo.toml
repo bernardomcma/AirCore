@@ -11,9 +11,7 @@ proc-macro = true
 workspace = true
 
 [dependencies]
-openscq30-lib-has = { workspace = true }
 syn = { workspace = true }
 quote = { workspace = true }
 proc-macro2 = { workspace = true }
 heck = { workspace = true }
-itertools = { workspace = true }

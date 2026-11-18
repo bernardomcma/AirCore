@@ -1,2 +1,0 @@
-* Fixes
-  - Notification quick preset buttons activate the wrong quick preset
