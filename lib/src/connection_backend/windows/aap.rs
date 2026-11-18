@@ -51,6 +51,10 @@ const SUPPORTED_APPLE_PIDS: &[u16] = &[0x2014, 0x2024];
 const PIPE_BUSY_MAX_RETRIES: usize = 20;
 const PIPE_BUSY_RETRY_DELAY: Duration = Duration::from_millis(25);
 const ERROR_BROKEN_PIPE_RAW: i32 = 109;
+const WPODS_STATUS_PIPE_NAME: &str = r"\\.\pipe\WPods.Service";
+const WPODS_SETUP_URL: &str =
+    "https://github.com/FPNDev/wpods/releases/download/v0.4.1/WPods-Setup.exe";
+const WPODS_SETUP_SHA256: &str = "AE09E52052DEFBE164CFB2BED764A637AD44D5387B8329D410D0B0A96F6E9BE7";
 
 #[derive(Default)]
 pub struct WindowsAapBackend;
@@ -70,10 +74,160 @@ impl AapBackend for WindowsAapBackend {
         &self,
         mac_address: MacAddr6,
     ) -> connection::Result<Arc<dyn AapConnection + Send + Sync>> {
-        let pipe = open_wpods_pipe(WPODS_AAP_PIPE_NAME, true).await?;
-        let conn = WPodsAapConnection::open_with_pipe(Arc::new(pipe), mac_address).await?;
-        Ok(Arc::new(conn))
+        if open_wpods_pipe(WPODS_AAP_PIPE_NAME, true).await.is_err() {
+            ensure_wpods_service_ready().await?;
+        }
+
+        let mut last_err: Option<connection::Error> = None;
+        for attempt in 0..8 {
+            let pipe = match open_wpods_pipe(WPODS_AAP_PIPE_NAME, true).await {
+                Ok(pipe) => pipe,
+                Err(err) => {
+                    last_err = Some(err);
+                    tokio::time::sleep(Duration::from_millis(800)).await;
+                    continue;
+                }
+            };
+
+            match WPodsAapConnection::open_with_pipe(Arc::new(pipe), mac_address).await {
+                Ok(conn) => return Ok(Arc::new(conn)),
+                Err(connection::Error::TransportError { code: 170, .. }) if attempt < 4 => {
+                    // WPods.exe tray UI is holding the single AAP channel open; close the tray client
+                    // while keeping WPodsService running so AirCore can claim the channel.
+                    debug!("WPods.Aap returned ERROR_BUSY (170); closing WPods.exe tray client");
+                    let _ = tokio::task::spawn_blocking(close_wpods_tray_client).await;
+                    tokio::time::sleep(Duration::from_millis(600)).await;
+                }
+                Err(
+                    err @ connection::Error::TransportError {
+                        code: 1167 | 121, ..
+                    },
+                ) if attempt < 7 => {
+                    // Adapter/ACL link may still be re-attaching right after WPodsService starts.
+                    debug!(
+                        "AirPods ACL link not ready yet (attempt {}); nudging WPods.Service and retrying",
+                        attempt + 1
+                    );
+                    let _ = nudge_wpods_service_retry().await;
+                    last_err = Some(err);
+                    tokio::time::sleep(Duration::from_millis(1500)).await;
+                }
+                Err(err) => return Err(err),
+            }
+        }
+
+        Err(
+            last_err.unwrap_or_else(|| connection::Error::ServiceUnavailable {
+                reason: "Timed out waiting for WPodsService AAP channel to become ready."
+                    .to_owned(),
+                source: None,
+                location: Location::caller(),
+            }),
+        )
     }
+}
+
+fn is_wpods_service_registered() -> bool {
+    let Ok(scm) = (unsafe { OpenSCManagerW(None, None, SC_MANAGER_CONNECT) }) else {
+        return false;
+    };
+    let _scm = ScHandleGuard(scm);
+    if let Ok(svc) = unsafe { OpenServiceW(_scm.0, w!("WPodsService"), SERVICE_QUERY_STATUS) } {
+        let _svc = ScHandleGuard(svc);
+        true
+    } else {
+        false
+    }
+}
+
+fn close_wpods_tray_client() {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    let _ = std::process::Command::new("taskkill.exe")
+        .args(["/F", "/IM", "WPods.exe"])
+        .creation_flags(CREATE_NO_WINDOW)
+        .status();
+}
+
+async fn nudge_wpods_service_retry() -> io::Result<()> {
+    let pipe = ClientOptions::new()
+        .pipe_mode(PipeMode::Message)
+        .open(WPODS_STATUS_PIPE_NAME)?;
+    let msg_pipe = WindowsNamedPipe::new(pipe);
+    // Protocol.Retry = 0x21 in WPods.Service
+    msg_pipe.write_message(&[0x21]).await
+}
+
+async fn ensure_wpods_service_ready() -> connection::Result<()> {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+    let registered = tokio::task::spawn_blocking(is_wpods_service_registered)
+        .await
+        .unwrap_or(false);
+
+    if registered {
+        debug!("WPodsService is installed but not running; requesting service start");
+        let _ = tokio::task::spawn_blocking(move || {
+            std::process::Command::new("powershell.exe")
+                .args([
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-WindowStyle",
+                    "Hidden",
+                    "-Command",
+                    "Start-Process sc.exe -ArgumentList 'start','WPodsService' -Verb RunAs -WindowStyle Hidden -Wait",
+                ])
+                .creation_flags(CREATE_NO_WINDOW)
+                .status()
+        })
+        .await;
+
+        for _ in 0..24 {
+            if open_wpods_pipe(WPODS_AAP_PIPE_NAME, true).await.is_ok() {
+                return Ok(());
+            }
+            tokio::time::sleep(Duration::from_millis(500)).await;
+        }
+    } else {
+        debug!("WPodsService is not installed; downloading/launching official WPods-Setup.exe");
+        let script = format!(
+            "$ErrorActionPreference = 'Stop'; \
+             $dest = Join-Path $env:TEMP 'WPods-Setup.exe'; \
+             $expected = '{WPODS_SETUP_SHA256}'; \
+             if (-not (Test-Path $dest) -or ((Get-FileHash $dest -Algorithm SHA256).Hash -ne $expected)) {{ \
+                 Invoke-WebRequest -Uri '{WPODS_SETUP_URL}' -OutFile $dest -UseBasicParsing; \
+             }}; \
+             if ((Get-FileHash $dest -Algorithm SHA256).Hash -ne $expected) {{ throw 'SHA256 mismatch' }}; \
+             Start-Process -FilePath $dest -ArgumentList '/SP-','/SILENT','/NORESTART','/TASKS=\"!startup,!desktopicon\"' -Wait"
+        );
+        let install_res = tokio::task::spawn_blocking(move || {
+            std::process::Command::new("powershell.exe")
+                .args([
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-WindowStyle",
+                    "Hidden",
+                    "-Command",
+                    &script,
+                ])
+                .creation_flags(CREATE_NO_WINDOW)
+                .status()
+        })
+        .await;
+
+        if matches!(install_res, Ok(Ok(status)) if status.success()) {
+            let _ = tokio::task::spawn_blocking(close_wpods_tray_client).await;
+            for _ in 0..30 {
+                if open_wpods_pipe(WPODS_AAP_PIPE_NAME, true).await.is_ok() {
+                    return Ok(());
+                }
+                tokio::time::sleep(Duration::from_millis(500)).await;
+            }
+        }
+    }
+
+    open_wpods_pipe(WPODS_AAP_PIPE_NAME, true).await.map(|_| ())
 }
 
 fn is_aap_devnode_id(id: &str) -> bool {

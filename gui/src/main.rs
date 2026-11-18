@@ -65,9 +65,10 @@ fn main() -> anyhow::Result<()> {
     openscq30_lib::i18n::init(&requested_languages);
 
     let cosmic_settings = match config.get().theme {
-        config::AppTheme::System => cosmic::app::Settings::default(),
-        config::AppTheme::Light => cosmic::app::Settings::default().theme(cosmic::Theme::light()),
-        config::AppTheme::Dark => cosmic::app::Settings::default().theme(cosmic::Theme::dark()),
+        config::AppTheme::System | config::AppTheme::Light => {
+            cosmic::app::Settings::default().theme(theme::apple_light_theme())
+        }
+        config::AppTheme::Dark => cosmic::app::Settings::default().theme(theme::apple_dark_theme()),
     }
     .size(cosmic::iced::Size::new(1040.0, 740.0))
     .size_limits(

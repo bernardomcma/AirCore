@@ -13,9 +13,14 @@
 
 use std::borrow::Cow;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use cosmic::{
     Theme,
+    cosmic_theme::{
+        ThemeBuilder,
+        palette::{Srgb, Srgba},
+    },
     iced::{
         Background, Border, Color, Shadow, Vector,
         border::Radius,
@@ -82,27 +87,27 @@ impl AppPalette {
             is_dark: false,
             canvas: Color::from_rgb8(245, 245, 247),
             card: Color::from_rgb8(255, 255, 255),
-            recessed: Color::from_rgb8(239, 239, 244),
-            sidebar: Color::from_rgb8(242, 242, 246),
+            recessed: Color::from_rgb8(242, 242, 247),
+            sidebar: Color::from_rgb8(255, 255, 255),
             border: Color::from_rgb8(229, 229, 234),
-            divider: Color::from_rgb8(234, 234, 238),
+            divider: Color::from_rgb8(235, 235, 240),
             control_border: Color::from_rgb8(209, 209, 214),
             text_primary: Color::from_rgb8(29, 29, 31),
             text_secondary: Color::from_rgb8(76, 76, 82),
             text_tertiary: Color::from_rgb8(88, 88, 94),
-            accent: Color::from_rgb8(0, 86, 179),
-            accent_text: Color::from_rgb8(0, 82, 170),
+            accent: Color::from_rgb8(0, 96, 198),
+            accent_text: Color::from_rgb8(0, 90, 186),
             on_accent: Color::WHITE,
-            accent_tint: Color::from_rgb8(232, 242, 255),
-            warning_tint: Color::from_rgb8(255, 248, 230),
-            warning_border: Color::from_rgb8(243, 210, 140),
+            accent_tint: Color::from_rgb8(235, 244, 255),
+            warning_tint: Color::from_rgb8(255, 251, 235),
+            warning_border: Color::from_rgb8(252, 211, 77),
             warning_text: Color::from_rgb8(133, 77, 14),
             destructive: Color::from_rgb8(178, 22, 32),
-            destructive_tint: Color::from_rgb8(255, 236, 235),
+            destructive_tint: Color::from_rgb8(245, 245, 247),
             destructive_text: Color::from_rgb8(152, 18, 26),
-            hover_overlay: Color::from_rgba8(0, 0, 0, 0.04),
-            pressed_overlay: Color::from_rgba8(0, 0, 0, 0.08),
-            selected_neutral: Color::from_rgb8(229, 229, 234),
+            hover_overlay: Color::from_rgba8(0, 0, 0, 0.035),
+            pressed_overlay: Color::from_rgba8(0, 0, 0, 0.07),
+            selected_neutral: Color::from_rgb8(232, 242, 255),
         }
     }
 
@@ -135,6 +140,34 @@ impl AppPalette {
             selected_neutral: Color::from_rgb8(58, 58, 60),
         }
     }
+}
+
+pub fn apple_light_theme() -> Theme {
+    let built = ThemeBuilder::light()
+        .bg_color(Srgba::new(1.0, 1.0, 1.0, 1.0))
+        .primary_container_bg(Srgba::new(1.0, 1.0, 1.0, 1.0))
+        .text_tint(Srgb::new(29.0 / 255.0, 29.0 / 255.0, 31.0 / 255.0))
+        .neutral_tint(Srgb::new(110.0 / 255.0, 110.0 / 255.0, 115.0 / 255.0))
+        .accent(Srgb::new(0.0, 113.0 / 255.0, 227.0 / 255.0))
+        .success(Srgb::new(52.0 / 255.0, 199.0 / 255.0, 89.0 / 255.0))
+        .warning(Srgb::new(1.0, 149.0 / 255.0, 0.0))
+        .destructive(Srgb::new(225.0 / 255.0, 45.0 / 255.0, 36.0 / 255.0))
+        .build();
+    Theme::custom(Arc::new(built))
+}
+
+pub fn apple_dark_theme() -> Theme {
+    let built = ThemeBuilder::dark()
+        .bg_color(Srgba::new(28.0 / 255.0, 28.0 / 255.0, 30.0 / 255.0, 1.0))
+        .primary_container_bg(Srgba::new(44.0 / 255.0, 44.0 / 255.0, 46.0 / 255.0, 1.0))
+        .text_tint(Srgb::new(245.0 / 255.0, 245.0 / 255.0, 247.0 / 255.0))
+        .neutral_tint(Srgb::new(142.0 / 255.0, 142.0 / 255.0, 147.0 / 255.0))
+        .accent(Srgb::new(10.0 / 255.0, 132.0 / 255.0, 1.0))
+        .success(Srgb::new(48.0 / 255.0, 209.0 / 255.0, 88.0 / 255.0))
+        .warning(Srgb::new(1.0, 159.0 / 255.0, 10.0 / 255.0))
+        .destructive(Srgb::new(1.0, 69.0 / 255.0, 58.0 / 255.0))
+        .build();
+    Theme::custom(Arc::new(built))
 }
 
 #[must_use]
@@ -171,7 +204,15 @@ pub fn card_container(theme: &Theme) -> container::Style {
             width: 1.0,
             radius: Radius::from(RADIUS_MD),
         },
-        shadow: Shadow::default(),
+        shadow: if p.is_dark {
+            Shadow::default()
+        } else {
+            Shadow {
+                color: Color::from_rgba8(15, 23, 42, 0.03),
+                offset: Vector::new(0.0, 2.0),
+                blur_radius: 8.0,
+            }
+        },
         snap: true,
     }
 }
@@ -387,7 +428,7 @@ pub fn destructive_button() -> cosmic::theme::Button {
             let mut style = base_button_style(RADIUS_SM);
             style.background = Some(Background::Color(p.destructive_tint));
             style.border_width = 1.0;
-            style.border_color = p.destructive;
+            style.border_color = p.border;
             style.text_color = Some(p.destructive_text);
             style.icon_color = Some(p.destructive_text);
             if focused {

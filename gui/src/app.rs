@@ -742,9 +742,8 @@ impl AppModel {
 
     fn apply_theme(&self) -> cosmic::app::Task<Message> {
         cosmic::command::set_theme(match self.config.get().theme {
-            AppTheme::System => self.core.system_theme().clone(),
-            AppTheme::Light => cosmic::Theme::light(),
-            AppTheme::Dark => cosmic::Theme::dark(),
+            AppTheme::System | AppTheme::Light => theme::apple_light_theme(),
+            AppTheme::Dark => theme::apple_dark_theme(),
         })
     }
 

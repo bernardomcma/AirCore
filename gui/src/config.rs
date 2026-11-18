@@ -29,9 +29,9 @@ pub struct ConfigInner {
 )]
 #[serde(rename_all = "kebab-case")]
 pub enum AppTheme {
-    #[default]
     #[translate("system-theme")]
     System,
+    #[default]
     #[translate("light-theme")]
     Light,
     #[translate("dark-theme")]

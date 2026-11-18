@@ -111,16 +111,35 @@ impl DeviceSelectionModel {
                     .row_spacing(theme::SPACE_XS)
                     .align_items(alignment::Alignment::Center);
 
+                let model_tag = match device.model {
+                    openscq30_lib::DeviceModel::AppleAirPodsPro2 => "Apple · AAP".to_owned(),
+                    other => {
+                        let raw = other.to_string();
+                        raw.strip_prefix("Soundcore")
+                            .map_or(raw.clone(), |code| format!("Soundcore · {code}"))
+                    }
+                };
+
+                let icon_badge =
+                    widget::container(widget::icon(crate::icons::openscq30()).size(32))
+                        .align_x(alignment::Horizontal::Center)
+                        .align_y(alignment::Vertical::Center);
+
                 let info_column = widget::column![
                     title_row,
                     widget::row![
-                        theme::row_subtitle(device.model.to_string()),
+                        theme::row_subtitle(model_tag),
                         theme::mono_value(device.mac_address.to_string()),
                     ]
                     .spacing(SPACE_MD)
                     .align_y(alignment::Vertical::Center),
                 ]
                 .spacing(theme::SPACE_XS);
+
+                let leading = widget::row![icon_badge, info_column.width(Length::Fill)]
+                    .spacing(SPACE_MD)
+                    .align_y(alignment::Vertical::Center)
+                    .width(Length::Fill);
 
                 let remove_button =
                     components::destructive_button(fl!("remove"), Message::RemoveDevice(index));
@@ -133,7 +152,7 @@ impl DeviceSelectionModel {
 
                 let content: Element<'_, Message> = if is_narrow {
                     widget::column![
-                        info_column.width(Length::Fill),
+                        leading,
                         widget::container(actions)
                             .width(Length::Fill)
                             .align_x(alignment::Horizontal::Right),
@@ -142,7 +161,7 @@ impl DeviceSelectionModel {
                     .width(Length::Fill)
                     .into()
                 } else {
-                    widget::row![info_column.width(Length::Fill), actions]
+                    widget::row![leading, actions]
                         .spacing(SPACE_MD)
                         .align_y(alignment::Vertical::Center)
                         .width(Length::Fill)
