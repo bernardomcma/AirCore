@@ -205,7 +205,7 @@ def test_f1_t1_06(ctx: TestContext) -> str:
     assert fmt.returncode == 0, f"cargo fmt --check failed:\n{fmt.stdout}\n{fmt.stderr}"
     with IsolatedCliSession(ctx.repo_root) as cli:
         ver = cli.run(["--version"])
-        assert "2.13.0" in ver.stdout, f"Unexpected version output: {ver.stdout!r}"
+        assert "2.14.0" in ver.stdout, f"Unexpected version output: {ver.stdout!r}"
         models = cli.list_models()
         by_id = {m["model"]: m["name"] for m in models}
         assert by_id.get("SoundcoreA3028") == "Soundcore Q30 / Life Q30", by_id
@@ -1083,7 +1083,7 @@ def test_t1_f7_03(ctx: TestContext) -> str:
     tier=1,
     feature="F7",
     name="about_drawer_displays_metadata",
-    description="Open About drawer and verify OpenSCQ30 title and version 2.13.0 metadata.",
+    description="Open About drawer and verify OpenSCQ30 title and version 2.14.0 metadata.",
     requires_gui=True,
 )
 def test_t1_f7_04(ctx: TestContext) -> str:
@@ -1094,7 +1094,7 @@ def test_t1_f7_04(ctx: TestContext) -> str:
         time.sleep(0.4)
         nodes = uia_get_tree(gui.hwnd)
         names = " | ".join(n.get("name") or "" for n in nodes)
-        assert "2.13.0" in names or "AirCore" in names, f"About drawer metadata missing: {names}"
+        assert "2.14.0" in names or "AirCore" in names, f"About drawer metadata missing: {names}"
         gui.close()
     return "About drawer metadata verified"
 

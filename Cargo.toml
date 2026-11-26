@@ -11,7 +11,7 @@ members = [
 resolver = "3"
 
 [workspace.package]
-version = "2.13.0"
+version = "2.14.0"
 license = "GPL-3.0-or-later"
 repository = "https://github.com/bernardomcma/AirCore"
 authors = ["Bernardo <https://github.com/bernardomcma>", "Kyle Scheuing <kyle@kylescheuing.com>"]
