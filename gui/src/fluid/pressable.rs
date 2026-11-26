@@ -6,10 +6,10 @@ use std::time::Instant;
 use cosmic::{
     Element, Renderer, Theme,
     iced::{
-        Length, Rectangle, Size, Transformation,
+        Length, Rectangle, Size, Transformation, Vector,
         advanced::{
-            Clipboard, Layout, Renderer as _, Shell, Widget, layout, mouse, renderer,
-            widget::{Tree, tree},
+            Clipboard, Layout, Renderer as _, Shell, Widget, layout, mouse, overlay, renderer,
+            widget::{self, Tree, tree},
         },
         event::Event,
         window,
@@ -150,6 +150,35 @@ impl<'a, Message> Widget<Message, Theme, Renderer> for FluidPressable<'a, Messag
             state.last_tick = Some(Instant::now());
             shell.request_redraw();
         }
+    }
+
+    fn operate(
+        &mut self,
+        tree: &mut Tree,
+        layout: Layout<'_>,
+        renderer: &Renderer,
+        operation: &mut dyn widget::Operation,
+    ) {
+        self.content
+            .as_widget_mut()
+            .operate(&mut tree.children[0], layout, renderer, operation);
+    }
+
+    fn overlay<'b>(
+        &'b mut self,
+        tree: &'b mut Tree,
+        layout: Layout<'b>,
+        renderer: &Renderer,
+        viewport: &Rectangle,
+        translation: Vector,
+    ) -> Option<overlay::Element<'b, Message, Theme, Renderer>> {
+        self.content.as_widget_mut().overlay(
+            &mut tree.children[0],
+            layout,
+            renderer,
+            viewport,
+            translation,
+        )
     }
 
     fn mouse_interaction(

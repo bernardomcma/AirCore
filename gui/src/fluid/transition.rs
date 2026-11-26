@@ -6,10 +6,10 @@ use std::time::Instant;
 use cosmic::{
     Element, Renderer, Theme,
     iced::{
-        Background, Border, Color, Length, Rectangle, Shadow, Size, Transformation,
+        Background, Border, Color, Length, Rectangle, Shadow, Size, Transformation, Vector,
         advanced::{
-            Clipboard, Layout, Renderer as _, Shell, Widget, layout, mouse, renderer,
-            widget::{Tree, tree},
+            Clipboard, Layout, Renderer as _, Shell, Widget, layout, mouse, overlay, renderer,
+            widget::{self, Tree, tree},
         },
         border::Radius,
         event::Event,
@@ -140,6 +140,42 @@ impl<'a, Message> Widget<Message, Theme, Renderer> for FluidTransition<'a, Messa
             state.last_tick = Some(Instant::now());
             shell.request_redraw();
         }
+    }
+
+    fn operate(
+        &mut self,
+        tree: &mut Tree,
+        layout: Layout<'_>,
+        renderer: &Renderer,
+        operation: &mut dyn widget::Operation,
+    ) {
+        self.content
+            .as_widget_mut()
+            .operate(&mut tree.children[0], layout, renderer, operation);
+    }
+
+    fn overlay<'b>(
+        &'b mut self,
+        tree: &'b mut Tree,
+        layout: Layout<'b>,
+        renderer: &Renderer,
+        viewport: &Rectangle,
+        translation: Vector,
+    ) -> Option<overlay::Element<'b, Message, Theme, Renderer>> {
+        let state = tree.state.downcast_ref::<TransitionState>();
+        let t = state.progress.value.clamp(0.0, 1.0);
+        let offset_y = if t >= 0.999 {
+            0.0
+        } else {
+            self.slide_distance * (1.0 - t)
+        };
+        self.content.as_widget_mut().overlay(
+            &mut tree.children[0],
+            layout,
+            renderer,
+            viewport,
+            translation + Vector::new(0.0, offset_y),
+        )
     }
 
     fn mouse_interaction(
